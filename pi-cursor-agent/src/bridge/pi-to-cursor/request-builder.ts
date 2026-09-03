@@ -55,31 +55,50 @@ function extractUserMessageText(msg: Message): string {
     .trim();
 }
 
-/**
- * Resolve the current-turn user text for Cursor's userMessageAction.
- *
- * Pi extensions (e.g. pi-subagents ambient roster) inject custom messages after
- * the real prompt. convertToLlm maps those to consecutive trailing `user`
- * messages. Taking only messages.at(-1) would drop the real prompt, so join
- * the entire trailing consecutive-user block instead.
- */
-function resolveCurrentUserText(messages: Message[]): string {
+function resolveCurrentUserTexts(messages: Message[]): string[] {
   const trailing: string[] = [];
   for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    if (!msg || msg.role !== "user") break;
-    const text = extractUserMessageText(msg);
+    const message = messages[i];
+    if (!message || message.role !== "user") break;
+    const text = extractUserMessageText(message);
     if (text) trailing.unshift(text);
   }
-  return trailing.join("\n\n");
+  return trailing;
 }
 
-/** True when this user message is part of the open turn (no non-user after it). */
 function isInCurrentUserTurn(messages: Message[], index: number): boolean {
-  for (let j = index + 1; j < messages.length; j++) {
-    if (messages[j]?.role !== "user") return false;
+  for (let i = index + 1; i < messages.length; i++) {
+    if (messages[i]?.role !== "user") return false;
   }
   return true;
+}
+
+function createUserMessageAction(text: string): ConversationAction {
+  const userMessage = new UserMessage({
+    text,
+    messageId: crypto.randomUUID(),
+  });
+
+  return new ConversationAction({
+    action: {
+      case: "userMessageAction",
+      value: new UserMessageAction({ userMessage }),
+    },
+  });
+}
+
+/**
+ * Build the user actions added by Pi between Cursor tool boundaries.
+ *
+ * Without steering, a continuation context ends in a tool result. Trailing
+ * user messages therefore represent new input that must be forwarded into the
+ * still-running Cursor conversation. Pi can deliver more than one message at
+ * once, so preserve the original order of the entire trailing user block.
+ */
+export function buildContinuationActions(
+  context: Context,
+): ConversationAction[] {
+  return resolveCurrentUserTexts(context.messages).map(createUserMessageAction);
 }
 
 /** Format content blocks (thinking, text, toolCall) into a single string. */
@@ -149,8 +168,6 @@ function buildConversationTurns(
       continue;
     }
 
-    // Trailing consecutive user messages (prompt + converted custom notes)
-    // belong to the current Cursor action, not seeded history turns.
     if (isInCurrentUserTurn(messages, i)) break;
 
     const userText = extractUserMessageText(msg);
@@ -280,22 +297,14 @@ export function buildRunRequest(
   const systemPromptId = getBlobId(systemPromptBytes);
   void params.blobStore.setBlob(null, systemPromptId, systemPromptBytes);
 
-  const userText = resolveCurrentUserText(params.context.messages);
+  const userText = resolveCurrentUserTexts(params.context.messages).join(
+    "\n\n",
+  );
   if (!userText) {
     throw new Error("Cannot send empty user message to Cursor API");
   }
 
-  const userMessage = new UserMessage({
-    text: userText,
-    messageId: crypto.randomUUID(),
-  });
-
-  const action = new ConversationAction({
-    action: {
-      case: "userMessageAction",
-      value: new UserMessageAction({ userMessage }),
-    },
-  });
+  const action = createUserMessageAction(userText);
 
   const cached = params.conversationState;
   const turns = buildConversationTurns(
