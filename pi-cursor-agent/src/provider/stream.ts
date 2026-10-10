@@ -34,12 +34,8 @@ import {
   buildRunRequest,
   getContextTools,
 } from "../bridge/pi-to-cursor/request-builder";
-import {
-  resolveContextSystemPrompt,
-  resolveContextTools,
-} from "../bridge/pi-to-cursor/transcript-context";
+import { resolveContextSystemPrompt } from "../bridge/pi-to-cursor/transcript-context";
 import { CURSOR_API_URL, CURSOR_CLIENT_VERSION } from "../lib/env";
-import { debugLogContextTools } from "../lib/tools-debug";
 import {
   AgentConnectClient,
   type CheckpointHandler,
@@ -439,18 +435,7 @@ export function streamCursorAgent(
 
         const agentStore = await ensureAgentStore(sessionId);
         const cwd = getCtx()?.cwd ?? process.cwd();
-        const resolvedTools = resolveContextTools(context);
         const requestContextTools = getContextTools(context);
-        const legacyContextToolNames = (
-          (context as { tools?: { name: string }[] }).tools ?? []
-        ).map((tool) => tool.name);
-        const activeToolNames = [...pi.getActiveTools()];
-        debugLogContextTools({
-          contextToolNames: resolvedTools.map((tool) => tool.name),
-          legacyContextToolNames,
-          activeToolNames,
-          advertised: requestContextTools,
-        });
 
         const channel = new LiveEventChannel(sessionId);
         const sessionAbortController = new AbortController();

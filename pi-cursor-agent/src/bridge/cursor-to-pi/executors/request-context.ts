@@ -10,7 +10,6 @@ import {
   RequestContextResult,
   RequestContextSuccess,
 } from "../../../__generated__/agent/v1/request_context_exec_pb";
-import { debugLogRequestContextTools } from "../../../lib/tools-debug";
 import type { Executor } from "../../../vendor/agent-exec";
 import {
   getGitBranch,
@@ -49,13 +48,6 @@ export class LocalRequestContextExecutor
         this.computeEnv(),
       ]);
 
-      const webSearchEnabled = false;
-      const webFetchEnabled = false;
-      debugLogRequestContextTools(this.tools, {
-        webSearchEnabled,
-        webFetchEnabled,
-      });
-
       const requestContext = new RequestContext({
         rules: this.rules,
         env,
@@ -67,8 +59,8 @@ export class LocalRequestContextExecutor
         fileContents: {},
         customSubagents: [],
         // Prefer Pi MCP web_search/web_fetch over Cursor-native interaction tools.
-        webSearchEnabled,
-        webFetchEnabled,
+        webSearchEnabled: false,
+        webFetchEnabled: false,
       });
 
       return new RequestContextResult({

@@ -28,7 +28,6 @@ import {
   McpToolDefinition as McpToolDefinitionClass,
   McpTools,
 } from "../../__generated__/agent/v1/mcp_pb";
-import { debugLogRunRequestMcpTools } from "../../lib/tools-debug";
 import type { CursorStateStore } from "../../provider/state";
 import { type BlobStore, getBlobId } from "../../vendor/agent-kv";
 import { toolResultToText } from "../shared/tool-result";
@@ -341,7 +340,6 @@ export function buildRunRequest(
   });
 
   const mcpToolDefinitions = params.mcpToolDefinitions ?? [];
-  debugLogRunRequestMcpTools(mcpToolDefinitions, params.conversationId);
   const runRequest = new AgentRunRequest({
     conversationState,
     action,
