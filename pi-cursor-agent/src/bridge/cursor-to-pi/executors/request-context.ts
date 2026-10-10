@@ -49,7 +49,12 @@ export class LocalRequestContextExecutor
         this.computeEnv(),
       ]);
 
-      debugLogRequestContextTools(this.tools);
+      const webSearchEnabled = false;
+      const webFetchEnabled = false;
+      debugLogRequestContextTools(this.tools, {
+        webSearchEnabled,
+        webFetchEnabled,
+      });
 
       const requestContext = new RequestContext({
         rules: this.rules,
@@ -61,6 +66,9 @@ export class LocalRequestContextExecutor
         mcpInstructions: [],
         fileContents: {},
         customSubagents: [],
+        // Prefer Pi MCP web_search/web_fetch over Cursor-native interaction tools.
+        webSearchEnabled,
+        webFetchEnabled,
       });
 
       return new RequestContextResult({

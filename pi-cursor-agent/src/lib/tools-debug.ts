@@ -87,9 +87,15 @@ export function debugLogRunRequestMcpTools(
 
 export function debugLogRequestContextTools(
   tools: McpToolDefinition[],
+  extras?: {
+    webSearchEnabled?: boolean;
+    webFetchEnabled?: boolean;
+  },
 ): void {
   debugLogTools("exec.RequestContext.tools", {
     toolsCount: tools.length,
     toolNames: tools.map((tool) => tool.name),
+    webSearchEnabled: extras?.webSearchEnabled ?? null,
+    webFetchEnabled: extras?.webFetchEnabled ?? null,
   });
 }
