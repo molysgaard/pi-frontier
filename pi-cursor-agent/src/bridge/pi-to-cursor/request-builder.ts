@@ -28,9 +28,14 @@ import {
   McpToolDefinition as McpToolDefinitionClass,
   McpTools,
 } from "../../__generated__/agent/v1/mcp_pb";
+import { debugLogRunRequestMcpTools } from "../../lib/tools-debug";
 import type { CursorStateStore } from "../../provider/state";
 import { type BlobStore, getBlobId } from "../../vendor/agent-kv";
 import { toolResultToText } from "../shared/tool-result";
+import {
+  resolveContextSystemPrompt,
+  resolveContextTools,
+} from "./transcript-context";
 
 const CURSOR_NATIVE_TOOL_NAMES = new Set([
   "bash",
@@ -42,8 +47,6 @@ const CURSOR_NATIVE_TOOL_NAMES = new Set([
   "lsp",
   "todo_write",
 ]);
-
-type ContextWithTools = Context & { tools?: Tool[] };
 
 function extractUserMessageText(msg: Message): string {
   if (msg.role !== "user") return "";
@@ -285,8 +288,8 @@ export function buildRunRequest(
   params: BuildRunRequestParams,
 ): BuildRunRequestResult {
   const content =
-    params.systemPromptOverride ??
-    params.context.systemPrompt ??
+    params.systemPromptOverride ||
+    resolveContextSystemPrompt(params.context) ||
     "You are a helpful assistant.";
 
   const systemPromptJson = JSON.stringify({
@@ -338,6 +341,7 @@ export function buildRunRequest(
   });
 
   const mcpToolDefinitions = params.mcpToolDefinitions ?? [];
+  debugLogRunRequestMcpTools(mcpToolDefinitions, params.conversationId);
   const runRequest = new AgentRunRequest({
     conversationState,
     action,
@@ -357,5 +361,12 @@ export function buildRunRequest(
 }
 
 export function getContextTools(context: Context): McpToolDefinition[] {
-  return buildMcpToolDefinitions((context as ContextWithTools).tools);
+  return buildMcpToolDefinitions(resolveContextTools(context));
+}
+
+/** Exported for tests: MCP advertise list after native-tool filtering. */
+export function buildMcpToolDefinitionsForTools(
+  tools: Tool[] | undefined,
+): McpToolDefinition[] {
+  return buildMcpToolDefinitions(tools);
 }

@@ -10,6 +10,7 @@ import {
   RequestContextResult,
   RequestContextSuccess,
 } from "../../../__generated__/agent/v1/request_context_exec_pb";
+import { debugLogRequestContextTools } from "../../../lib/tools-debug";
 import type { Executor } from "../../../vendor/agent-exec";
 import {
   getGitBranch,
@@ -47,6 +48,8 @@ export class LocalRequestContextExecutor
         this.collectGitRepos(),
         this.computeEnv(),
       ]);
+
+      debugLogRequestContextTools(this.tools);
 
       const requestContext = new RequestContext({
         rules: this.rules,
