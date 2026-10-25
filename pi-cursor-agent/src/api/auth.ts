@@ -3,6 +3,12 @@ type AuthResult = {
   refreshToken: string;
 };
 
+type OAuthTokenResult = {
+  accessToken: string;
+  refreshToken?: string;
+  shouldLogout: boolean;
+};
+
 class Auth {
   constructor(private readonly baseUrl: string) {}
 
@@ -42,9 +48,54 @@ class Auth {
     });
   }
 
+  /**
+   * Refresh a browser-login / IDE session JWT via Cursor's OAuth token endpoint.
+   * Long-lived `crsr_` API keys must use {@link exchangeUserApiKey} instead.
+   */
+  public async refreshOAuthToken({
+    refreshToken,
+    clientId,
+    signal,
+  }: {
+    refreshToken: string;
+    clientId: string;
+    signal?: AbortSignal | undefined;
+  }) {
+    return this.fetchJson<OAuthTokenResult>("/oauth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        grant_type: "refresh_token",
+        client_id: clientId,
+        refresh_token: refreshToken,
+      }),
+      signal: signal ?? null,
+      validator: this.isOAuthTokenResult,
+      // Cursor returns 200 with shouldLogout=true for rejected refresh tokens.
+      mapJson: (data): OAuthTokenResult | unknown => {
+        if (!data || typeof data !== "object") {
+          return data;
+        }
+        const record = data as Record<string, unknown>;
+        return {
+          accessToken: record["access_token"] ?? record["accessToken"],
+          refreshToken: record["refresh_token"] ?? record["refreshToken"],
+          shouldLogout: Boolean(record["shouldLogout"]),
+        };
+      },
+    });
+  }
+
   private async fetchJson<T>(
     url: string,
-    { validator, ...init }: RequestInit & { validator: (data: T) => data is T },
+    {
+      validator,
+      mapJson,
+      ...init
+    }: RequestInit & {
+      validator: (data: unknown) => data is T;
+      mapJson?: (data: unknown) => unknown;
+    },
   ): Promise<T> {
     const response = await fetch(`${this.baseUrl}${url}`, init);
     if (!response.ok) {
@@ -52,7 +103,10 @@ class Auth {
       throw new Error(`Fetch failed ${url} for ${response.status}: ${error}`);
     }
 
-    const data = await response.json();
+    let data: unknown = await response.json();
+    if (mapJson) {
+      data = mapJson(data);
+    }
     if (!validator(data)) {
       const error = JSON.stringify(data);
       throw new Error(`Fetch failed ${url} for invalid response: ${error}`);
@@ -66,7 +120,20 @@ class Auth {
       typeof data === "object" &&
       data !== null &&
       "accessToken" in data &&
-      "refreshToken" in data
+      typeof (data as AuthResult).accessToken === "string" &&
+      "refreshToken" in data &&
+      typeof (data as AuthResult).refreshToken === "string"
+    );
+  }
+
+  private isOAuthTokenResult(data: unknown): data is OAuthTokenResult {
+    return (
+      typeof data === "object" &&
+      data !== null &&
+      "accessToken" in data &&
+      typeof (data as OAuthTokenResult).accessToken === "string" &&
+      "shouldLogout" in data &&
+      typeof (data as OAuthTokenResult).shouldLogout === "boolean"
     );
   }
 }
