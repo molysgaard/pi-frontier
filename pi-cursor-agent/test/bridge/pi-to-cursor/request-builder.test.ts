@@ -278,3 +278,112 @@ test("reconstruction works without state", () => {
 
   assert.equal(buildRunRequest(params).conversationState.turns.length, 1);
 });
+
+test("attaches user images via selected_context", () => {
+  const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+  const { params } = createParams({
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "what is in this image?" },
+          {
+            type: "image",
+            data: pngBytes.toString("base64"),
+            mimeType: "image/png",
+          },
+        ],
+        timestamp: 1,
+      },
+    ],
+  });
+
+  const result = buildRunRequest(params);
+  assert.equal(result.initialRequest.message.case, "runRequest");
+  if (result.initialRequest.message.case !== "runRequest") {
+    assert.fail("Expected a run request");
+  }
+  const initialAction = result.initialRequest.message.value.action;
+  assert.equal(initialAction?.action.case, "userMessageAction");
+  if (initialAction?.action.case !== "userMessageAction") {
+    assert.fail("Expected a user message action");
+  }
+  const userMessage = initialAction.action.value.userMessage;
+  assert.equal(userMessage?.text, "what is in this image?");
+  assert.equal(userMessage?.selectedContext?.selectedImages.length, 1);
+  const image = userMessage?.selectedContext?.selectedImages[0];
+  assert.equal(image?.mimeType, "image/png");
+  assert.equal(image?.dataOrBlobId.case, "data");
+  if (image?.dataOrBlobId.case !== "data") assert.fail("expected data");
+  assert.deepEqual(Buffer.from(image.dataOrBlobId.value), pngBytes);
+});
+
+test("allows image-only user messages", () => {
+  const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+  const { params } = createParams({
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "image",
+            data: pngBytes.toString("base64"),
+            mimeType: "image/png",
+          },
+        ],
+        timestamp: 1,
+      },
+    ],
+  });
+
+  const result = buildRunRequest(params);
+  assert.equal(result.initialRequest.message.case, "runRequest");
+  if (result.initialRequest.message.case !== "runRequest") {
+    assert.fail("Expected a run request");
+  }
+  const initialAction = result.initialRequest.message.value.action;
+  assert.equal(initialAction?.action.case, "userMessageAction");
+  if (initialAction?.action.case !== "userMessageAction") {
+    assert.fail("Expected a user message action");
+  }
+  const userMessage = initialAction.action.value.userMessage;
+  assert.equal(userMessage?.text, "");
+  assert.equal(userMessage?.selectedContext?.selectedImages.length, 1);
+});
+
+test("continuation actions carry trailing user images", () => {
+  const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+  const context = {
+    messages: [
+      { role: "user", content: "Start", timestamp: 1 },
+      {
+        role: "assistant",
+        content: [],
+        timestamp: 2,
+        ...ASSISTANT_DEFAULTS,
+      },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "look at this" },
+          {
+            type: "image",
+            data: pngBytes.toString("base64"),
+            mimeType: "image/png",
+          },
+        ],
+        timestamp: 3,
+      },
+    ],
+  } satisfies Context;
+
+  const actions = buildContinuationActions(context);
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0]?.action.case, "userMessageAction");
+  if (actions[0]?.action.case !== "userMessageAction") {
+    assert.fail("Expected a user message action");
+  }
+  const userMessage = actions[0].action.value.userMessage;
+  assert.equal(userMessage?.text, "look at this");
+  assert.equal(userMessage?.selectedContext?.selectedImages.length, 1);
+});

@@ -12,6 +12,7 @@ import {
 } from "../../../__generated__/agent/v1/read_exec_pb";
 import type { Executor } from "../../../vendor/agent-exec";
 import {
+  toolResultPrimaryImage,
   toolResultToText,
   toolResultWasTruncated,
 } from "../../shared/tool-result";
@@ -49,6 +50,23 @@ export function buildReadResultFromToolResult(
       },
     });
   }
+
+  const image = toolResultPrimaryImage(result);
+  if (image) {
+    return new ReadResultClass({
+      result: {
+        case: "success",
+        value: new ReadSuccess({
+          path,
+          totalLines: 0,
+          fileSize: BigInt(image.bytes.length),
+          truncated: toolResultWasTruncated(result),
+          output: { case: "data", value: image.bytes },
+        }),
+      },
+    });
+  }
+
   const totalLines = text ? text.split("\n").length : 0;
   return new ReadResultClass({
     result: {

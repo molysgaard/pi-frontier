@@ -28,9 +28,17 @@ import {
   McpToolDefinition as McpToolDefinitionClass,
   McpTools,
 } from "../../__generated__/agent/v1/mcp_pb";
+import {
+  SelectedContext,
+  SelectedImage,
+} from "../../__generated__/agent/v1/selected_context_pb";
 import type { CursorStateStore } from "../../provider/state";
 import { type BlobStore, getBlobId } from "../../vendor/agent-kv";
-import { toolResultToText } from "../shared/tool-result";
+import {
+  type DecodedImage,
+  decodeImagesFromContent,
+  toolResultToText,
+} from "../shared/tool-result";
 import {
   resolveContextSystemPrompt,
   resolveContextTools,
@@ -47,23 +55,38 @@ const CURSOR_NATIVE_TOOL_NAMES = new Set([
   "todo_write",
 ]);
 
-function extractUserMessageText(msg: Message): string {
-  if (msg.role !== "user") return "";
-  if (typeof msg.content === "string") return msg.content.trim();
-  return msg.content
+interface UserMessagePayload {
+  text: string;
+  images: DecodedImage[];
+}
+
+function extractUserMessagePayload(msg: Message): UserMessagePayload | null {
+  if (msg.role !== "user") return null;
+
+  if (typeof msg.content === "string") {
+    const text = msg.content.trim();
+    return text ? { text, images: [] } : null;
+  }
+
+  const text = msg.content
     .filter((c): c is TextContent => c.type === "text")
     .map((c) => c.text)
     .join("\n")
     .trim();
+  const images = decodeImagesFromContent(msg.content);
+  if (!text && images.length === 0) return null;
+  return { text, images };
 }
 
-function resolveCurrentUserTexts(messages: Message[]): string[] {
-  const trailing: string[] = [];
+function resolveCurrentUserPayloads(
+  messages: Message[],
+): UserMessagePayload[] {
+  const trailing: UserMessagePayload[] = [];
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i];
     if (!message || message.role !== "user") break;
-    const text = extractUserMessageText(message);
-    if (text) trailing.unshift(text);
+    const payload = extractUserMessagePayload(message);
+    if (payload) trailing.unshift(payload);
   }
   return trailing;
 }
@@ -75,10 +98,27 @@ function isInCurrentUserTurn(messages: Message[], index: number): boolean {
   return true;
 }
 
-function createUserMessageAction(text: string): ConversationAction {
+function selectedImagesFromDecoded(images: DecodedImage[]): SelectedImage[] {
+  return images.map(
+    (image) =>
+      new SelectedImage({
+        uuid: crypto.randomUUID(),
+        mimeType: image.mimeType,
+        dataOrBlobId: { case: "data", value: image.bytes },
+      }),
+  );
+}
+
+function createUserMessageAction(
+  payload: UserMessagePayload,
+): ConversationAction {
+  const selectedImages = selectedImagesFromDecoded(payload.images);
   const userMessage = new UserMessage({
-    text,
+    text: payload.text,
     messageId: crypto.randomUUID(),
+    ...(selectedImages.length > 0
+      ? { selectedContext: new SelectedContext({ selectedImages }) }
+      : {}),
   });
 
   return new ConversationAction({
@@ -100,7 +140,9 @@ function createUserMessageAction(text: string): ConversationAction {
 export function buildContinuationActions(
   context: Context,
 ): ConversationAction[] {
-  return resolveCurrentUserTexts(context.messages).map(createUserMessageAction);
+  return resolveCurrentUserPayloads(context.messages).map(
+    createUserMessageAction,
+  );
 }
 
 /** Format content blocks (thinking, text, toolCall) into a single string. */
@@ -172,15 +214,19 @@ function buildConversationTurns(
 
     if (isInCurrentUserTurn(messages, i)) break;
 
-    const userText = extractUserMessageText(msg);
-    if (!userText) {
+    const payload = extractUserMessagePayload(msg);
+    if (!payload) {
       i++;
       continue;
     }
 
+    const selectedImages = selectedImagesFromDecoded(payload.images);
     const userMessage = new UserMessage({
-      text: userText,
+      text: payload.text,
       messageId: crypto.randomUUID(),
+      ...(selectedImages.length > 0
+        ? { selectedContext: new SelectedContext({ selectedImages }) }
+        : {}),
     });
     const userMessageBlobId = storeBlob(blobStore, userMessage.toBinary());
 
@@ -299,14 +345,17 @@ export function buildRunRequest(
   const systemPromptId = getBlobId(systemPromptBytes);
   void params.blobStore.setBlob(null, systemPromptId, systemPromptBytes);
 
-  const userText = resolveCurrentUserTexts(params.context.messages).join(
-    "\n\n",
-  );
-  if (!userText) {
+  const payloads = resolveCurrentUserPayloads(params.context.messages);
+  const userText = payloads
+    .map((payload) => payload.text)
+    .filter((text) => text.length > 0)
+    .join("\n\n");
+  const images = payloads.flatMap((payload) => payload.images);
+  if (!userText && images.length === 0) {
     throw new Error("Cannot send empty user message to Cursor API");
   }
 
-  const action = createUserMessageAction(userText);
+  const action = createUserMessageAction({ text: userText, images });
 
   const cached = params.conversationState;
   const turns = buildConversationTurns(

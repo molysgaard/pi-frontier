@@ -6,6 +6,7 @@ import type {
 } from "../../../__generated__/agent/v1/mcp_tool_pb";
 import {
   McpError,
+  McpImageContent,
   McpResult as McpResultClass,
   McpSuccess,
   McpTextContent,
@@ -13,7 +14,7 @@ import {
   McpToolResultContentItem,
 } from "../../../__generated__/agent/v1/mcp_tool_pb";
 import type { Executor } from "../../../vendor/agent-exec";
-import { toolResultToText } from "../../shared/tool-result";
+import { decodeImageContent } from "../../shared/tool-result";
 import {
   decodeToolCallId,
   type PiToolContext,
@@ -48,20 +49,56 @@ function decodeMcpArgs(args: {
 }
 
 /** Convert a Pi ToolResultMessage to a Cursor McpResult. */
-function buildMcpResultFromToolResult(result: ToolResultMessage): McpResult {
-  const text = toolResultToText(result);
+export function buildMcpResultFromToolResult(
+  result: ToolResultMessage,
+): McpResult {
+  const content: McpToolResultContentItem[] = [];
+
+  for (const item of result.content) {
+    if (item.type === "text") {
+      if (!item.text) continue;
+      content.push(
+        new McpToolResultContentItem({
+          content: {
+            case: "text",
+            value: new McpTextContent({ text: item.text }),
+          },
+        }),
+      );
+      continue;
+    }
+
+    const image = decodeImageContent(item);
+    if (!image) continue;
+    content.push(
+      new McpToolResultContentItem({
+        content: {
+          case: "image",
+          value: new McpImageContent({
+            data: image.bytes,
+            mimeType: image.mimeType,
+          }),
+        },
+      }),
+    );
+  }
+
+  if (content.length === 0) {
+    content.push(
+      new McpToolResultContentItem({
+        content: {
+          case: "text",
+          value: new McpTextContent({ text: "(no output)" }),
+        },
+      }),
+    );
+  }
+
   return new McpResultClass({
     result: {
       case: "success",
       value: new McpSuccess({
-        content: [
-          new McpToolResultContentItem({
-            content: {
-              case: "text",
-              value: new McpTextContent({ text: text || "(no output)" }),
-            },
-          }),
-        ],
+        content,
         isError: result.isError,
       }),
     },
