@@ -36,6 +36,7 @@ import {
 } from "../bridge/pi-to-cursor/request-builder";
 import { resolveContextSystemPrompt } from "../bridge/pi-to-cursor/transcript-context";
 import { CURSOR_API_URL, CURSOR_CLIENT_VERSION } from "../lib/env";
+import { debugLogTransport } from "../lib/transport-debug";
 import {
   AgentConnectClient,
   type CheckpointHandler,
@@ -508,6 +509,11 @@ export function streamCursorAgent(
             case "token-delta":
               channel.push({ kind: "token-delta", tokens: update.tokens });
               return;
+            case "turn-ended":
+              // Cursor finished this agent turn; stop consuming before the
+              // transport close is mis-handled as a mid-turn disconnect.
+              channel.push({ kind: "cursor-done" });
+              return;
             default:
               return;
           }
@@ -537,6 +543,21 @@ export function streamCursorAgent(
           blobStore,
           checkpointHandler,
           signal: sessionSignal,
+          debugContext: {
+            sessionId,
+            conversationId: agentStore.getId(),
+            clientVersion: CURSOR_CLIENT_VERSION,
+            modelId: cursorModelId,
+          },
+          onConnectionStateChange: (state) => {
+            debugLogTransport("transport.connection_state", {
+              sessionId,
+              conversationId: agentStore.getId(),
+              clientVersion: CURSOR_CLIENT_VERSION,
+              modelId: cursorModelId,
+              ...state,
+            });
+          },
         };
 
         const cursorRunPromise = connectClient

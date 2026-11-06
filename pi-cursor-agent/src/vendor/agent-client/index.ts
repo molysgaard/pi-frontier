@@ -4,8 +4,11 @@ export {
 } from "./checkpoint-controller";
 export {
   AgentConnectClient,
+  type AgentConnectDebugContext,
   type AgentConnectRunOptions,
   type AgentRpcClient,
+  isBenignStreamEndError,
+  isRetriableTransportError,
 } from "./connect";
 export {
   ClientExecController,

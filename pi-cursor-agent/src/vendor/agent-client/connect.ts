@@ -16,6 +16,11 @@ import {
 } from "../../__generated__/agent/v1/exec_pb";
 import type { KvClientMessage } from "../../__generated__/agent/v1/kv_pb";
 import type { McpTools } from "../../__generated__/agent/v1/mcp_pb";
+import {
+  ActivityTrackingStallDetector,
+  debugLogTransport,
+  serializeErrorForDebug,
+} from "../../lib/transport-debug";
 import type { ResourceAccessor } from "../agent-exec/registry-resource-accessor";
 import { SimpleControlledExecManager } from "../agent-exec/simple-controlled-exec-manager";
 import { type BlobStore, ControlledKvManager } from "../agent-kv";
@@ -29,17 +34,20 @@ import {
   ClientInteractionController,
   type InteractionListener,
 } from "./interaction-controller";
-import {
-  type SplitChannels,
-  type StallDetector,
-  splitStream,
-} from "./split-stream";
+import { type SplitChannels, splitStream } from "./split-stream";
 
 export interface AgentRpcClient {
   run(
     input: AsyncIterable<AgentClientMessage>,
     options?: { signal?: AbortSignal; headers?: Record<string, string> },
   ): AsyncIterable<AgentServerMessage>;
+}
+
+export interface AgentConnectDebugContext {
+  sessionId?: string;
+  conversationId?: string;
+  clientVersion?: string;
+  modelId?: string;
 }
 
 export interface AgentConnectRunOptions {
@@ -52,23 +60,94 @@ export interface AgentConnectRunOptions {
   onConnectionStateChange?: (state: {
     state: "reconnecting" | "connected";
   }) => void;
+  debugContext?: AgentConnectDebugContext;
 }
 
 const HEARTBEAT_INTERVAL_MS = 5_000;
 const MAX_RETRY_ATTEMPTS = 5;
 
-function createNoopStallDetector(): StallDetector {
-  return {
-    onServerSentHeartbeat() {},
-    reset() {},
-    onStreamEnded() {},
-  };
+/**
+ * Transport failure substrings treated as retriable by native cursor-agent.
+ * Matched against error.message and nested cause messages.
+ */
+const RETRIABLE_TRANSPORT_SUBSTRINGS = [
+  "NGHTTP2",
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "EPIPE",
+  "socket hang up",
+  "Premature close",
+  "UND_ERR_SOCKET",
+  "ERR_STREAM",
+  "protocol error",
+  "http/2 stream",
+  "ERR_HTTP2_SESSION_ERROR",
+  "Session closed with error code",
+  "connection aborted",
+  "PING timed out",
+] as const;
+
+function collectErrorTexts(error: unknown): string[] {
+  const texts: string[] = [];
+  let current: unknown = error;
+  const seen = new Set<unknown>();
+
+  while (current && !seen.has(current) && texts.length < 8) {
+    seen.add(current);
+    if (current instanceof Error) {
+      texts.push(current.message);
+      const withCode = current as Error & {
+        code?: unknown;
+        rawMessage?: unknown;
+      };
+      if (typeof withCode.code === "string") texts.push(withCode.code);
+      if (typeof withCode.rawMessage === "string") {
+        texts.push(withCode.rawMessage);
+      }
+      current = (current as Error & { cause?: unknown }).cause;
+      continue;
+    }
+    texts.push(String(current));
+    break;
+  }
+
+  return texts;
+}
+
+/** Exported for unit tests — mirrors native cursor-agent transport retry policy. */
+export function isRetriableTransportError(error: unknown): boolean {
+  if (error instanceof LostConnection) return true;
+
+  const texts = collectErrorTexts(error);
+  return RETRIABLE_TRANSPORT_SUBSTRINGS.some((needle) =>
+    texts.some((text) => text.includes(needle)),
+  );
 }
 
 function isRetriableError(error: unknown): boolean {
-  if (error instanceof LostConnection) return true;
-  if (error instanceof Error && error.message.includes("NGHTTP2")) return true;
-  return false;
+  return isRetriableTransportError(error);
+}
+
+/**
+ * Stream-close failures that often mean "peer finished the bidi stream"
+ * rather than a mid-turn drop. Matched against message/cause text.
+ */
+const BENIGN_STREAM_END_SUBSTRINGS = [
+  "Premature close",
+  "ERR_STREAM_PREMATURE_CLOSE",
+  "missing EndStreamResponse",
+  "WriteIterableClosed",
+] as const;
+
+export function isBenignStreamEndError(error: unknown): boolean {
+  if (error instanceof LostConnection) {
+    return isBenignStreamEndError(new Error(error.message));
+  }
+  const texts = collectErrorTexts(error);
+  return BENIGN_STREAM_END_SUBSTRINGS.some((needle) =>
+    texts.some((text) => text.includes(needle)),
+  );
 }
 
 async function backoff(attempt: number, signal?: AbortSignal): Promise<void> {
@@ -169,6 +248,20 @@ export class AgentConnectClient {
     options: AgentConnectRunOptions,
   ): Promise<void> {
     const runRequest = initialRequest.message.value as AgentRunRequest;
+    const debugContext = {
+      ...options.debugContext,
+      conversationId:
+        options.debugContext?.conversationId ?? runRequest.conversationId,
+    };
+    const activityTracker = new ActivityTrackingStallDetector();
+
+    debugLogTransport("run.start", {
+      ...debugContext,
+      modelId:
+        debugContext.modelId ??
+        runRequest.modelDetails?.modelId ??
+        undefined,
+    });
 
     // Retry state
     let currentState = runRequest.conversationState;
@@ -183,6 +276,8 @@ export class AgentConnectClient {
     let unacknowledgedClosureKey: string | undefined;
     let unacknowledgedClosureAttempts = 0;
     const receivedNewCheckpoint = { value: false };
+    const sawTurnEnded = { value: false };
+    const runStartedAt = Date.now();
 
     // Helper: switch to ResumeAction if we received a checkpoint
     const maybeResumeFromCheckpoint = () => {
@@ -198,11 +293,14 @@ export class AgentConnectClient {
     const trackingInteractionListener: InteractionListener = {
       sendUpdate: async (ctx, update) => {
         if (update.type === "user-message-appended") {
+          sawTurnEnded.value = false;
           const messageId = (update.userMessage as { messageId?: unknown })
             .messageId;
           if (typeof messageId === "string") {
             this.acknowledgeUserMessage(messageId);
           }
+        } else if (update.type === "turn-ended") {
+          sawTurnEnded.value = true;
         }
         await options.interactionListener.sendUpdate(ctx, update);
       },
@@ -244,10 +342,19 @@ export class AgentConnectClient {
           ...options,
           interactionListener: trackingInteractionListener,
           checkpointHandler: trackingCheckpointHandler,
+          activityTracker,
         });
 
         const pending = this.pendingConversationActions[0];
-        if (!pending) return;
+        if (!pending) {
+          debugLogTransport("run.end", {
+            ...debugContext,
+            reason: "completed",
+            durationMs: Date.now() - runStartedAt,
+            attempt,
+          });
+          return;
+        }
 
         const checkpoint = options.checkpointHandler.getLatestCheckpoint?.();
         if (!checkpoint) {
@@ -275,15 +382,69 @@ export class AgentConnectClient {
         currentAction = pending.action;
         attempt = 0;
       } catch (error) {
-        if (!isRetriableError(error) || attempt >= MAX_RETRY_ATTEMPTS) {
+        const pendingCount = this.pendingConversationActions.length;
+        // After Cursor sends turn_ended, the HTTP/2 stream often closes with
+        // Premature close / missing EndStream. Retrying ResumeAction there
+        // restarts the agent and stacks zombie "interrupted" turns.
+        if (
+          isBenignStreamEndError(error) &&
+          sawTurnEnded.value &&
+          pendingCount === 0
+        ) {
+          debugLogTransport("run.end", {
+            ...debugContext,
+            reason: "completed_after_turn_ended_stream_close",
+            durationMs: Date.now() - runStartedAt,
+            attempt,
+            sawTurnEnded: true,
+            ...serializeErrorForDebug(error),
+            activity: activityTracker.snapshot(),
+          });
+          return;
+        }
+
+        const retriable = isRetriableError(error);
+        const willRetry = retriable && attempt < MAX_RETRY_ATTEMPTS;
+
+        debugLogTransport("transport.error", {
+          ...debugContext,
+          ...serializeErrorForDebug(error),
+          isRetriable: retriable,
+          willRetry,
+          sawTurnEnded: sawTurnEnded.value,
+          pendingCount,
+          attempt,
+          maxAttempts: MAX_RETRY_ATTEMPTS,
+          activity: activityTracker.snapshot(),
+        });
+
+        if (!willRetry) {
+          debugLogTransport("run.end", {
+            ...debugContext,
+            reason: "error",
+            durationMs: Date.now() - runStartedAt,
+            attempt,
+            sawTurnEnded: sawTurnEnded.value,
+            ...serializeErrorForDebug(error),
+          });
           throw error;
         }
 
         // Retry: notify UI, maybe resume from checkpoint, backoff
+        attempt++;
+        const delayMs = Math.min(1_000 * 2 ** attempt, 30_000);
+        debugLogTransport("transport.retry", {
+          ...debugContext,
+          attempt,
+          maxAttempts: MAX_RETRY_ATTEMPTS,
+          backoffMs: delayMs,
+          resumeFromCheckpoint: receivedNewCheckpoint.value,
+          sawTurnEnded: sawTurnEnded.value,
+          activity: activityTracker.snapshot(),
+        });
         options.onConnectionStateChange?.({ state: "reconnecting" });
         maybeResumeFromCheckpoint();
 
-        attempt++;
         await backoff(attempt, options.signal);
       }
     }
@@ -316,13 +477,15 @@ export class AgentConnectClient {
    */
   private async runInternal(
     initialRequest: AgentClientMessage,
-    options: AgentConnectRunOptions,
+    options: AgentConnectRunOptions & {
+      activityTracker: ActivityTrackingStallDetector;
+    },
   ): Promise<void> {
     const controlledExecManager = SimpleControlledExecManager.fromResources(
       options.resources,
     );
 
-    const stallDetector = createNoopStallDetector();
+    const stallDetector = options.activityTracker;
 
     const baseRequestStream = createWritableIterable<AgentClientMessage>();
 

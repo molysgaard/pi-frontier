@@ -5,6 +5,10 @@ import {
   ExecServerControlMessage,
   type ExecServerMessage,
 } from "../../__generated__/agent/v1/exec_pb";
+import {
+  debugLogTransport,
+  serializeErrorForDebug,
+} from "../../lib/transport-debug";
 import { WriteIterableClosedError } from "../utils";
 
 export interface Writable<T> {
@@ -97,6 +101,9 @@ export class ClientExecController {
           throw new LostConnection(error.message);
         }
       }
+
+      debugLogTransport("exec.unmapped_error", serializeErrorForDebug(error));
+      throw error;
     }
   }
 }
