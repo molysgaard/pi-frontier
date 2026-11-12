@@ -13,9 +13,11 @@ import {
   UserMessageAction,
   UserMessageAppendedUpdate,
 } from "../../../src/__generated__/agent/v1/agent_pb.js";
+import { applyCursorTimezoneHeader } from "../../../src/lib/cursor-headers.js";
 import {
   AgentConnectClient,
   isBenignStreamEndError,
+  isNonRetriableAgentError,
   isRetriableTransportError,
   type AgentRpcClient,
 } from "../../../src/vendor/agent-client/connect.js";
@@ -350,6 +352,45 @@ test("does not ResumeAction after turn_ended + terminal checkpoint + Premature c
   assert.deepEqual(actionCases, ["userMessageAction"]);
 });
 
+test("fails fast on OUTDATED_CLIENT without ResumeAction", async () => {
+  let attempt = 0;
+  const actionCases: string[] = [];
+
+  const client = new AgentConnectClient({
+    run(input) {
+      attempt += 1;
+      return (async function* () {
+        for await (const message of input) {
+          if (message.message.case !== "runRequest") continue;
+          const action = message.message.value.action;
+          actionCases.push(action?.action.case ?? "none");
+          yield new AgentServerMessage({
+            message: {
+              case: "conversationCheckpointUpdate",
+              value: new ConversationStateStructure({
+                rootPromptMessagesJson: [new Uint8Array([7])],
+              }),
+            },
+          });
+          throw new ConnectError("OUTDATED_CLIENT", Code.FailedPrecondition);
+        }
+      })();
+    },
+  });
+
+  await assert.rejects(
+    () => client.run(initialRequest(), createRunOptions()),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /OUTDATED_CLIENT/);
+      return true;
+    },
+  );
+
+  assert.equal(attempt, 1);
+  assert.deepEqual(actionCases, ["userMessageAction"]);
+});
+
 test("still resumes from an eligible checkpoint on mid-turn Premature close", async () => {
   let attempt = 0;
   const actionCases: string[] = [];
@@ -423,6 +464,36 @@ test("isRetriableTransportError matches native transport failures", () => {
     true,
   );
   assert.equal(isBenignStreamEndError(new Error("ECONNRESET")), false);
+});
+
+test("OUTDATED_CLIENT is a non-retriable agent error", () => {
+  assert.equal(isNonRetriableAgentError(new Error("OUTDATED_CLIENT")), true);
+  assert.equal(
+    isNonRetriableAgentError(new Error("prefix OUTDATED_CLIENT suffix")),
+    true,
+  );
+  assert.equal(isNonRetriableAgentError(new Error("Premature close")), false);
+
+  const headers = new Headers();
+  headers.set("x-cursor-inference-request-error-type", "OUTDATED_CLIENT");
+  const viaHeader = new ConnectError(
+    "client rejected",
+    Code.FailedPrecondition,
+    headers,
+  );
+  assert.equal(isNonRetriableAgentError(viaHeader), true);
+  assert.equal(isRetriableTransportError(viaHeader), false);
+});
+
+test("applyCursorTimezoneHeader sets Intl timezone when absent", () => {
+  const header = new Headers();
+  applyCursorTimezoneHeader(header);
+  const value = header.get("x-cursor-timezone");
+  assert.ok(value && value.length > 0);
+
+  header.set("x-cursor-timezone", "UTC");
+  applyCursorTimezoneHeader(header);
+  assert.equal(header.get("x-cursor-timezone"), "UTC");
 });
 
 test("rejects conversation actions when no run is active", async () => {

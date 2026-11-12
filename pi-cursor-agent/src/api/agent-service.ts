@@ -9,6 +9,7 @@ import type {
   AgentServerMessage,
 } from "../__generated__/agent/v1/agent_pb";
 import { AgentService as AgentServiceDef } from "../__generated__/agent/v1/agent_service_connect";
+import { applyCursorTimezoneHeader } from "../lib/cursor-headers";
 import type { AgentRpcClient } from "../vendor/agent-client";
 
 interface AgentServiceOptions {
@@ -108,6 +109,7 @@ class AgentService {
       req.header.set("x-cursor-client-type", options.clientType);
       req.header.set("x-cursor-client-version", options.clientVersion);
       req.header.set("x-ghost-mode", "true");
+      applyCursorTimezoneHeader(req.header);
       req.header.set("x-request-id", crypto.randomUUID());
       return next(req);
     };

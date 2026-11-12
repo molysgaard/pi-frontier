@@ -41,12 +41,15 @@ import {
   splitStream,
 } from "./split-stream";
 import {
+  formatNonRetriableAgentError,
   isBenignStreamEndError,
+  isNonRetriableAgentError,
   isRetriableTransportError,
 } from "./transport-errors";
 
 export {
   isBenignStreamEndError,
+  isNonRetriableAgentError,
   isRetriableTransportError,
 } from "./transport-errors";
 
@@ -350,6 +353,23 @@ export class AgentConnectClient {
           ? new Error("Connection stalled", { cause: error })
           : error;
         const pendingCount = this.pendingConversationActions.length;
+
+        // Native config-class errors (e.g. OUTDATED_CLIENT): fail immediately.
+        // Do not complete-as-success or ResumeAction-retry these.
+        if (isNonRetriableAgentError(effectiveError)) {
+          const message = formatNonRetriableAgentError(effectiveError);
+          debugLogTransport("run.end", {
+            ...debugContext,
+            reason: "non_retriable_agent_error",
+            durationMs: Date.now() - runStartedAt,
+            attempt,
+            sawTurnEnded: sawTurnEnded.value,
+            resumeEligibility: resumeEligibility.value,
+            ...serializeErrorForDebug(effectiveError),
+            activity: activityTracker.snapshot(),
+          });
+          throw new Error(message, { cause: effectiveError });
+        }
 
         // Native: terminal checkpoint before a retryable error → complete
         // without automatic ResumeAction (avoids zombie interrupted turns).

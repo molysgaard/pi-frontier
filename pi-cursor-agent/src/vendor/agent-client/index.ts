@@ -8,6 +8,7 @@ export {
   type AgentConnectRunOptions,
   type AgentRpcClient,
   isBenignStreamEndError,
+  isNonRetriableAgentError,
   isRetriableTransportError,
 } from "./connect";
 export {

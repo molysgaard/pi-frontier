@@ -5,6 +5,7 @@ import {
 } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
 import { AiService as AiServiceDef } from "../__generated__/aiserver/v1/aiserver_service_connect";
+import { applyCursorTimezoneHeader } from "../lib/cursor-headers";
 
 interface AgentServiceOptions {
   accessToken: string;
@@ -21,6 +22,7 @@ class AiService {
       req.header.set("x-cursor-client-type", options.clientType);
       req.header.set("x-cursor-client-version", options.clientVersion);
       req.header.set("x-ghost-mode", "true");
+      applyCursorTimezoneHeader(req.header);
       req.header.set("x-request-id", crypto.randomUUID());
       return next(req);
     };
