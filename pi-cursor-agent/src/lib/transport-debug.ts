@@ -112,6 +112,9 @@ export function serializeErrorForDebug(error: unknown): {
 
 const RECENT_MESSAGE_LIMIT = 12;
 
+/** Native default failTimeoutMs is 30s (floored to ≥20s outside tests). */
+export const DEFAULT_STALL_THRESHOLD_MS = 30_000;
+
 export interface StreamActivitySnapshot {
   lastActivityAt: number | null;
   lastHeartbeatAt: number | null;
@@ -123,18 +126,38 @@ export interface StreamActivitySnapshot {
   streamEnded: boolean;
 }
 
-/** StallDetector that also keeps breadcrumbs for transport-debug logs. */
+export interface ActivityTrackingStallDetectorOptions {
+  /** Idle time without inbound activity before onStall. ≤0 disables. */
+  thresholdMs?: number;
+  onStall?: () => void;
+}
+
+/**
+ * StallDetector with transport-debug breadcrumbs and native-like fail timer.
+ * Heartbeats reset the activity clock (same as any inbound message).
+ */
 export class ActivityTrackingStallDetector {
   private lastActivityAt: number | null = null;
   private lastHeartbeatAt: number | null = null;
   private lastMeaningfulActivityAt: number | null = null;
   private readonly recentMessageTypes: string[] = [];
   private ended = false;
+  private stalled = false;
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  private readonly thresholdMs: number;
+  private readonly onStall: (() => void) | undefined;
+
+  constructor(options: ActivityTrackingStallDetectorOptions = {}) {
+    this.thresholdMs =
+      options.thresholdMs ?? DEFAULT_STALL_THRESHOLD_MS;
+    this.onStall = options.onStall;
+  }
 
   onServerSentHeartbeat(): void {
     const now = Date.now();
     this.lastActivityAt = now;
     this.lastHeartbeatAt = now;
+    this.armTimer();
   }
 
   reset(_activityType: string, messageType: string): void {
@@ -147,10 +170,16 @@ export class ActivityTrackingStallDetector {
     if (this.recentMessageTypes.length > RECENT_MESSAGE_LIMIT) {
       this.recentMessageTypes.shift();
     }
+    this.armTimer();
   }
 
   onStreamEnded(): void {
     this.ended = true;
+    this.clearTimer();
+  }
+
+  dispose(): void {
+    this.clearTimer();
   }
 
   snapshot(): StreamActivitySnapshot {
@@ -170,5 +199,27 @@ export class ActivityTrackingStallDetector {
           : now - this.lastMeaningfulActivityAt,
       streamEnded: this.ended,
     };
+  }
+
+  private armTimer(): void {
+    this.clearTimer();
+    if (this.ended || this.stalled || this.thresholdMs <= 0) return;
+    this.timer = setTimeout(() => {
+      this.timer = undefined;
+      if (this.ended || this.stalled) return;
+      this.stalled = true;
+      debugLogTransport("transport.stall", {
+        thresholdMs: this.thresholdMs,
+        activity: this.snapshot(),
+      });
+      this.onStall?.();
+    }, this.thresholdMs);
+  }
+
+  private clearTimer(): void {
+    if (this.timer !== undefined) {
+      clearTimeout(this.timer);
+      this.timer = undefined;
+    }
   }
 }

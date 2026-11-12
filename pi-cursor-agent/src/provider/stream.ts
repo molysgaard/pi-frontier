@@ -35,7 +35,11 @@ import {
   getContextTools,
 } from "../bridge/pi-to-cursor/request-builder";
 import { resolveContextSystemPrompt } from "../bridge/pi-to-cursor/transcript-context";
-import { CURSOR_API_URL, CURSOR_CLIENT_VERSION } from "../lib/env";
+import {
+  CURSOR_API_URL,
+  CURSOR_CLIENT_VERSION,
+  SOFT_CANCEL_LINGER_MS,
+} from "../lib/env";
 import { debugLogTransport } from "../lib/transport-debug";
 import {
   AgentConnectClient,
@@ -440,14 +444,17 @@ export function streamCursorAgent(
 
         const channel = new LiveEventChannel(sessionId);
         const sessionAbortController = new AbortController();
-        const sessionSignal = options?.signal
+        // Tools cancel immediately on user ESC; the Cursor RPC lingers briefly
+        // (native soft-cancel) so turn_ended can still land cleanly.
+        const toolSignal = options?.signal
           ? AbortSignal.any([options.signal, sessionAbortController.signal])
           : sessionAbortController.signal;
-        effectiveSignal = sessionSignal;
+        const rpcSignal = sessionAbortController.signal;
+        effectiveSignal = toolSignal;
 
         const piToolCtx: PiToolContext = {
           cwd,
-          signal: sessionSignal,
+          signal: toolSignal,
           getActiveTools: () => new Set(pi.getActiveTools()),
           getCtx,
           getChannel: () => channel,
@@ -542,7 +549,7 @@ export function streamCursorAgent(
           resources,
           blobStore,
           checkpointHandler,
-          signal: sessionSignal,
+          signal: rpcSignal,
           debugContext: {
             sessionId,
             conversationId: agentStore.getId(),
@@ -566,6 +573,40 @@ export function streamCursorAgent(
           .catch((error) => channel.push({ kind: "cursor-error", error }))
           .finally(() => channel.markDone());
 
+        const hardAbortRpc = (reason?: string) => {
+          if (sessionAbortController.signal.aborted) return;
+          sessionAbortController.abort(
+            reason ? new Error(reason) : new Error("Session ended"),
+          );
+        };
+
+        const beginSoftCancelLinger = () => {
+          debugLogTransport("transport.soft_cancel_linger", {
+            sessionId,
+            lingerMs: SOFT_CANCEL_LINGER_MS,
+          });
+          void Promise.race([
+            cursorRunPromise.catch(() => {}),
+            new Promise<void>((resolve) => {
+              setTimeout(resolve, SOFT_CANCEL_LINGER_MS);
+            }),
+          ]).then(() => {
+            hardAbortRpc(REQUEST_ABORTED_MESSAGE);
+          });
+        };
+
+        if (options?.signal) {
+          if (options.signal.aborted) {
+            beginSoftCancelLinger();
+          } else {
+            options.signal.addEventListener(
+              "abort",
+              () => beginSoftCancelLinger(),
+              { once: true },
+            );
+          }
+        }
+
         session = {
           channel,
           cursorRunPromise,
@@ -573,9 +614,7 @@ export function streamCursorAgent(
           sendConversationActions: (actions) =>
             connectClient.sendConversationActions(actions),
           abort: (reason) => {
-            sessionAbortController.abort(
-              reason ? new Error(reason) : new Error("Session ended"),
-            );
+            hardAbortRpc(reason);
           },
           startTime: Date.now(),
         };

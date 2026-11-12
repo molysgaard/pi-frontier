@@ -104,9 +104,25 @@ export type CoreInteractionUpdate =
   | { type: "summary"; summary: unknown }
   | { type: "summary-started" }
   | { type: "heartbeat" }
-  | { type: "summary-completed"; hookMessage?: string | undefined }
+  | {
+      type: "summary-completed";
+      hookMessage?: string | undefined;
+      failed?: boolean | undefined;
+    }
   | { type: "shell-output-delta"; event: unknown }
-  | { type: "turn-ended" }
+  | {
+      type: "turn-ended";
+      usage?:
+        | {
+            inputTokens?: number;
+            outputTokens?: number;
+            cacheReadTokens?: number;
+            cacheWriteTokens?: number;
+            reasoningTokens?: number;
+          }
+        | undefined;
+      endedAtMs?: number | undefined;
+    }
   | {
       type: "tool-call-delta";
       callId: string;
@@ -114,7 +130,9 @@ export type CoreInteractionUpdate =
       modelCallId: string;
     }
   | { type: "step-started"; stepId: number }
-  | { type: "step-completed"; stepId: number; stepDurationMs: number };
+  | { type: "step-completed"; stepId: number; stepDurationMs: number }
+  /** Newer Cursor updates we decode but do not surface to Pi yet. */
+  | { type: "protocol-update"; case: string; value: unknown };
 
 export type CoreInteractionQuery =
   | { type: "web-search-request"; args: unknown }
@@ -219,16 +237,40 @@ export function convertProtoToInteractionUpdate(
       return {
         type: "summary-completed",
         hookMessage: update.message.value.hookMessage,
+        failed: update.message.value.failed,
       };
     case "shellOutputDelta":
       return {
         type: "shell-output-delta",
         event: update.message.value.event,
       };
-    case "turnEnded":
+    case "turnEnded": {
+      const v = update.message.value;
+      const usage = {
+        ...(v.inputTokens !== undefined
+          ? { inputTokens: Number(v.inputTokens) }
+          : {}),
+        ...(v.outputTokens !== undefined
+          ? { outputTokens: Number(v.outputTokens) }
+          : {}),
+        ...(v.cacheReadTokens !== undefined
+          ? { cacheReadTokens: Number(v.cacheReadTokens) }
+          : {}),
+        ...(v.cacheWriteTokens !== undefined
+          ? { cacheWriteTokens: Number(v.cacheWriteTokens) }
+          : {}),
+        ...(v.reasoningTokens !== undefined
+          ? { reasoningTokens: Number(v.reasoningTokens) }
+          : {}),
+      };
       return {
         type: "turn-ended",
+        ...(Object.keys(usage).length > 0 ? { usage } : {}),
+        ...(v.endedAtMs !== undefined
+          ? { endedAtMs: Number(v.endedAtMs) }
+          : {}),
       };
+    }
     case "toolCallDelta":
       if (
         !update.message.value.toolCallDelta ||
@@ -253,6 +295,21 @@ export function convertProtoToInteractionUpdate(
         type: "step-completed",
         stepId: Number(update.message.value.stepId),
         stepDurationMs: Number(update.message.value.stepDurationMs),
+      };
+    case "toolRequestsListed":
+    case "postRequestPrompt":
+    case "activeBranchChange":
+    case "feedbackRequest":
+    case "responseComparison":
+    case "contextInjectionState":
+    case "routedModel":
+    case "grokBotNudge":
+    case "thinkingNote":
+    case "voiceCallUtterance":
+      return {
+        type: "protocol-update",
+        case: update.message.case,
+        value: update.message.value,
       };
     default:
       return null;

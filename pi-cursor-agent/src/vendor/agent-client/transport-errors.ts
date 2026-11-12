@@ -20,6 +20,7 @@ const RETRIABLE_TRANSPORT_SUBSTRINGS = [
   "Session closed with error code",
   "connection aborted",
   "PING timed out",
+  "Connection stalled",
 ] as const;
 
 /**

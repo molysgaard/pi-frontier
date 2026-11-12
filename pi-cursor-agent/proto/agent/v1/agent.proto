@@ -472,6 +472,7 @@ message HeartbeatUpdate {
 
 message SummaryCompletedUpdate {
   optional string hook_message = 1;
+  optional bool failed = 2;
 }
 
 message ShellOutputDeltaUpdate {
@@ -484,6 +485,12 @@ message ShellOutputDeltaUpdate {
 }
 
 message TurnEndedUpdate {
+  optional int64 input_tokens = 1;
+  optional int64 output_tokens = 2;
+  optional int64 cache_read_tokens = 3;
+  optional int64 cache_write_tokens = 4;
+  optional int64 reasoning_tokens = 5;
+  optional int64 ended_at_ms = 6;
 }
 
 message UserMessageAppendedUpdate {
@@ -497,6 +504,88 @@ message StepStartedUpdate {
 message StepCompletedUpdate {
   uint64 step_id = 1;
   int64 step_duration_ms = 2;
+}
+
+message ToolRequestsListedUpdate {
+  uint32 call_count = 1;
+}
+
+message ThinkingNoteUpdate {
+  string text = 1;
+}
+
+message ActiveBranchChangeUpdate {
+  string path = 1;
+  string branch_name = 2;
+}
+
+message RoutedModelUpdate {
+  string display_name = 1;
+}
+
+message GrokBotNudgeUpdate {
+  string job = 1;
+  string description = 2;
+  uint32 show_number = 3;
+}
+
+enum PostRequestPromptButtonAction {
+  POST_REQUEST_PROMPT_BUTTON_ACTION_UNSPECIFIED = 0;
+  POST_REQUEST_PROMPT_BUTTON_ACTION_UPDATE_CLIENT = 1;
+}
+
+message PostRequestPromptUpdate {
+  string title = 1;
+  string message = 2;
+  string button_label = 3;
+  string button_url = 4;
+  PostRequestPromptButtonAction button_action = 5;
+}
+
+message FeedbackRequestUpdate {
+  string request_id = 1;
+  optional string canonical_model_name = 2;
+  bool show_form_immediately = 5;
+  optional string title = 6;
+  optional string negative_title = 7;
+  optional string comment_placeholder = 8;
+}
+
+message ResponseComparisonUpdate {
+}
+
+message ContextInjectionQueued {}
+message ContextInjectionDelivered {}
+message ContextInjectionQueuedForNextTurn {}
+message ContextInjectionCancelled {}
+message ContextInjectionRejected {}
+
+message ContextInjectionState {
+  oneof state {
+    ContextInjectionQueued queued = 1;
+    ContextInjectionDelivered delivered = 2;
+    ContextInjectionQueuedForNextTurn queued_for_next_turn = 3;
+    ContextInjectionCancelled cancelled = 4;
+    ContextInjectionRejected rejected = 5;
+  }
+}
+
+message ContextInjectionStateUpdate {
+  string injection_id = 1;
+  ContextInjectionState state = 2;
+}
+
+enum VoiceCallUtteranceKind {
+  VOICE_CALL_UTTERANCE_KIND_UNSPECIFIED = 0;
+  VOICE_CALL_UTTERANCE_KIND_SEND = 1;
+  VOICE_CALL_UTTERANCE_KIND_TERMINAL = 2;
+}
+
+message VoiceCallUtterance {
+  string id = 1;
+  VoiceCallUtteranceKind kind = 2;
+  string text = 3;
+  repeated string answers_message_ids = 4;
 }
 
 message InteractionUpdate {
@@ -518,7 +607,18 @@ message InteractionUpdate {
     TurnEndedUpdate turn_ended = 14;
     StepStartedUpdate step_started = 16;
     StepCompletedUpdate step_completed = 17;
+    ToolRequestsListedUpdate tool_requests_listed = 27;
+    PostRequestPromptUpdate post_request_prompt = 19;
+    ActiveBranchChangeUpdate active_branch_change = 20;
+    FeedbackRequestUpdate feedback_request = 21;
+    ResponseComparisonUpdate response_comparison = 22;
+    ContextInjectionStateUpdate context_injection_state = 23;
+    RoutedModelUpdate routed_model = 24;
+    GrokBotNudgeUpdate grok_bot_nudge = 26;
+    ThinkingNoteUpdate thinking_note = 28;
+    VoiceCallUtterance voice_call_utterance = 30;
   }
+  optional int64 message_started_at_ms = 25;
 }
 
 message InteractionQuery {

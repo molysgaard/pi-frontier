@@ -294,6 +294,52 @@ proto3.util.setEnumType(ClientOS, "agent.v1.ClientOS", [
 ]);
 
 /**
+ * @generated from enum agent.v1.PostRequestPromptButtonAction
+ */
+export enum PostRequestPromptButtonAction {
+  /**
+   * @generated from enum value: POST_REQUEST_PROMPT_BUTTON_ACTION_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: POST_REQUEST_PROMPT_BUTTON_ACTION_UPDATE_CLIENT = 1;
+   */
+  UPDATE_CLIENT = 1,
+}
+// Retrieve enum metadata with: proto3.getEnumType(PostRequestPromptButtonAction)
+proto3.util.setEnumType(PostRequestPromptButtonAction, "agent.v1.PostRequestPromptButtonAction", [
+  { no: 0, name: "POST_REQUEST_PROMPT_BUTTON_ACTION_UNSPECIFIED" },
+  { no: 1, name: "POST_REQUEST_PROMPT_BUTTON_ACTION_UPDATE_CLIENT" },
+]);
+
+/**
+ * @generated from enum agent.v1.VoiceCallUtteranceKind
+ */
+export enum VoiceCallUtteranceKind {
+  /**
+   * @generated from enum value: VOICE_CALL_UTTERANCE_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: VOICE_CALL_UTTERANCE_KIND_SEND = 1;
+   */
+  SEND = 1,
+
+  /**
+   * @generated from enum value: VOICE_CALL_UTTERANCE_KIND_TERMINAL = 2;
+   */
+  TERMINAL = 2,
+}
+// Retrieve enum metadata with: proto3.getEnumType(VoiceCallUtteranceKind)
+proto3.util.setEnumType(VoiceCallUtteranceKind, "agent.v1.VoiceCallUtteranceKind", [
+  { no: 0, name: "VOICE_CALL_UTTERANCE_KIND_UNSPECIFIED" },
+  { no: 1, name: "VOICE_CALL_UTTERANCE_KIND_SEND" },
+  { no: 2, name: "VOICE_CALL_UTTERANCE_KIND_TERMINAL" },
+]);
+
+/**
  * @generated from message agent.v1.ToolCall
  */
 export class ToolCall extends Message<ToolCall> {
@@ -3246,6 +3292,11 @@ export class SummaryCompletedUpdate extends Message<SummaryCompletedUpdate> {
    */
   hookMessage?: string;
 
+  /**
+   * @generated from field: optional bool failed = 2;
+   */
+  failed?: boolean;
+
   constructor(data?: PartialMessage<SummaryCompletedUpdate>) {
     super();
     proto3.util.initPartial(data, this);
@@ -3255,6 +3306,7 @@ export class SummaryCompletedUpdate extends Message<SummaryCompletedUpdate> {
   static readonly typeName = "agent.v1.SummaryCompletedUpdate";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "hook_message", kind: "scalar", T: 9 /* ScalarType.STRING */, opt: true },
+    { no: 2, name: "failed", kind: "scalar", T: 8 /* ScalarType.BOOL */, opt: true },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SummaryCompletedUpdate {
@@ -3342,6 +3394,36 @@ export class ShellOutputDeltaUpdate extends Message<ShellOutputDeltaUpdate> {
  * @generated from message agent.v1.TurnEndedUpdate
  */
 export class TurnEndedUpdate extends Message<TurnEndedUpdate> {
+  /**
+   * @generated from field: optional int64 input_tokens = 1;
+   */
+  inputTokens?: bigint;
+
+  /**
+   * @generated from field: optional int64 output_tokens = 2;
+   */
+  outputTokens?: bigint;
+
+  /**
+   * @generated from field: optional int64 cache_read_tokens = 3;
+   */
+  cacheReadTokens?: bigint;
+
+  /**
+   * @generated from field: optional int64 cache_write_tokens = 4;
+   */
+  cacheWriteTokens?: bigint;
+
+  /**
+   * @generated from field: optional int64 reasoning_tokens = 5;
+   */
+  reasoningTokens?: bigint;
+
+  /**
+   * @generated from field: optional int64 ended_at_ms = 6;
+   */
+  endedAtMs?: bigint;
+
   constructor(data?: PartialMessage<TurnEndedUpdate>) {
     super();
     proto3.util.initPartial(data, this);
@@ -3350,6 +3432,12 @@ export class TurnEndedUpdate extends Message<TurnEndedUpdate> {
   static readonly runtime: typeof proto3 = proto3;
   static readonly typeName = "agent.v1.TurnEndedUpdate";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "input_tokens", kind: "scalar", T: 3 /* ScalarType.INT64 */, opt: true },
+    { no: 2, name: "output_tokens", kind: "scalar", T: 3 /* ScalarType.INT64 */, opt: true },
+    { no: 3, name: "cache_read_tokens", kind: "scalar", T: 3 /* ScalarType.INT64 */, opt: true },
+    { no: 4, name: "cache_write_tokens", kind: "scalar", T: 3 /* ScalarType.INT64 */, opt: true },
+    { no: 5, name: "reasoning_tokens", kind: "scalar", T: 3 /* ScalarType.INT64 */, opt: true },
+    { no: 6, name: "ended_at_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */, opt: true },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): TurnEndedUpdate {
@@ -3487,6 +3575,692 @@ export class StepCompletedUpdate extends Message<StepCompletedUpdate> {
 }
 
 /**
+ * @generated from message agent.v1.ToolRequestsListedUpdate
+ */
+export class ToolRequestsListedUpdate extends Message<ToolRequestsListedUpdate> {
+  /**
+   * @generated from field: uint32 call_count = 1;
+   */
+  callCount = 0;
+
+  constructor(data?: PartialMessage<ToolRequestsListedUpdate>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agent.v1.ToolRequestsListedUpdate";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "call_count", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ToolRequestsListedUpdate {
+    return new ToolRequestsListedUpdate().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ToolRequestsListedUpdate {
+    return new ToolRequestsListedUpdate().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ToolRequestsListedUpdate {
+    return new ToolRequestsListedUpdate().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ToolRequestsListedUpdate | PlainMessage<ToolRequestsListedUpdate> | undefined, b: ToolRequestsListedUpdate | PlainMessage<ToolRequestsListedUpdate> | undefined): boolean {
+    return proto3.util.equals(ToolRequestsListedUpdate, a, b);
+  }
+}
+
+/**
+ * @generated from message agent.v1.ThinkingNoteUpdate
+ */
+export class ThinkingNoteUpdate extends Message<ThinkingNoteUpdate> {
+  /**
+   * @generated from field: string text = 1;
+   */
+  text = "";
+
+  constructor(data?: PartialMessage<ThinkingNoteUpdate>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agent.v1.ThinkingNoteUpdate";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "text", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ThinkingNoteUpdate {
+    return new ThinkingNoteUpdate().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ThinkingNoteUpdate {
+    return new ThinkingNoteUpdate().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ThinkingNoteUpdate {
+    return new ThinkingNoteUpdate().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ThinkingNoteUpdate | PlainMessage<ThinkingNoteUpdate> | undefined, b: ThinkingNoteUpdate | PlainMessage<ThinkingNoteUpdate> | undefined): boolean {
+    return proto3.util.equals(ThinkingNoteUpdate, a, b);
+  }
+}
+
+/**
+ * @generated from message agent.v1.ActiveBranchChangeUpdate
+ */
+export class ActiveBranchChangeUpdate extends Message<ActiveBranchChangeUpdate> {
+  /**
+   * @generated from field: string path = 1;
+   */
+  path = "";
+
+  /**
+   * @generated from field: string branch_name = 2;
+   */
+  branchName = "";
+
+  constructor(data?: PartialMessage<ActiveBranchChangeUpdate>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agent.v1.ActiveBranchChangeUpdate";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "path", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "branch_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ActiveBranchChangeUpdate {
+    return new ActiveBranchChangeUpdate().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ActiveBranchChangeUpdate {
+    return new ActiveBranchChangeUpdate().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ActiveBranchChangeUpdate {
+    return new ActiveBranchChangeUpdate().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ActiveBranchChangeUpdate | PlainMessage<ActiveBranchChangeUpdate> | undefined, b: ActiveBranchChangeUpdate | PlainMessage<ActiveBranchChangeUpdate> | undefined): boolean {
+    return proto3.util.equals(ActiveBranchChangeUpdate, a, b);
+  }
+}
+
+/**
+ * @generated from message agent.v1.RoutedModelUpdate
+ */
+export class RoutedModelUpdate extends Message<RoutedModelUpdate> {
+  /**
+   * @generated from field: string display_name = 1;
+   */
+  displayName = "";
+
+  constructor(data?: PartialMessage<RoutedModelUpdate>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agent.v1.RoutedModelUpdate";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "display_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): RoutedModelUpdate {
+    return new RoutedModelUpdate().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): RoutedModelUpdate {
+    return new RoutedModelUpdate().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): RoutedModelUpdate {
+    return new RoutedModelUpdate().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: RoutedModelUpdate | PlainMessage<RoutedModelUpdate> | undefined, b: RoutedModelUpdate | PlainMessage<RoutedModelUpdate> | undefined): boolean {
+    return proto3.util.equals(RoutedModelUpdate, a, b);
+  }
+}
+
+/**
+ * @generated from message agent.v1.GrokBotNudgeUpdate
+ */
+export class GrokBotNudgeUpdate extends Message<GrokBotNudgeUpdate> {
+  /**
+   * @generated from field: string job = 1;
+   */
+  job = "";
+
+  /**
+   * @generated from field: string description = 2;
+   */
+  description = "";
+
+  /**
+   * @generated from field: uint32 show_number = 3;
+   */
+  showNumber = 0;
+
+  constructor(data?: PartialMessage<GrokBotNudgeUpdate>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agent.v1.GrokBotNudgeUpdate";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "job", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "description", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "show_number", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GrokBotNudgeUpdate {
+    return new GrokBotNudgeUpdate().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GrokBotNudgeUpdate {
+    return new GrokBotNudgeUpdate().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GrokBotNudgeUpdate {
+    return new GrokBotNudgeUpdate().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GrokBotNudgeUpdate | PlainMessage<GrokBotNudgeUpdate> | undefined, b: GrokBotNudgeUpdate | PlainMessage<GrokBotNudgeUpdate> | undefined): boolean {
+    return proto3.util.equals(GrokBotNudgeUpdate, a, b);
+  }
+}
+
+/**
+ * @generated from message agent.v1.PostRequestPromptUpdate
+ */
+export class PostRequestPromptUpdate extends Message<PostRequestPromptUpdate> {
+  /**
+   * @generated from field: string title = 1;
+   */
+  title = "";
+
+  /**
+   * @generated from field: string message = 2;
+   */
+  message = "";
+
+  /**
+   * @generated from field: string button_label = 3;
+   */
+  buttonLabel = "";
+
+  /**
+   * @generated from field: string button_url = 4;
+   */
+  buttonUrl = "";
+
+  /**
+   * @generated from field: agent.v1.PostRequestPromptButtonAction button_action = 5;
+   */
+  buttonAction = PostRequestPromptButtonAction.UNSPECIFIED;
+
+  constructor(data?: PartialMessage<PostRequestPromptUpdate>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agent.v1.PostRequestPromptUpdate";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "title", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "message", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "button_label", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "button_url", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 5, name: "button_action", kind: "enum", T: proto3.getEnumType(PostRequestPromptButtonAction) },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): PostRequestPromptUpdate {
+    return new PostRequestPromptUpdate().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): PostRequestPromptUpdate {
+    return new PostRequestPromptUpdate().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): PostRequestPromptUpdate {
+    return new PostRequestPromptUpdate().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: PostRequestPromptUpdate | PlainMessage<PostRequestPromptUpdate> | undefined, b: PostRequestPromptUpdate | PlainMessage<PostRequestPromptUpdate> | undefined): boolean {
+    return proto3.util.equals(PostRequestPromptUpdate, a, b);
+  }
+}
+
+/**
+ * @generated from message agent.v1.FeedbackRequestUpdate
+ */
+export class FeedbackRequestUpdate extends Message<FeedbackRequestUpdate> {
+  /**
+   * @generated from field: string request_id = 1;
+   */
+  requestId = "";
+
+  /**
+   * @generated from field: optional string canonical_model_name = 2;
+   */
+  canonicalModelName?: string;
+
+  /**
+   * @generated from field: bool show_form_immediately = 5;
+   */
+  showFormImmediately = false;
+
+  /**
+   * @generated from field: optional string title = 6;
+   */
+  title?: string;
+
+  /**
+   * @generated from field: optional string negative_title = 7;
+   */
+  negativeTitle?: string;
+
+  /**
+   * @generated from field: optional string comment_placeholder = 8;
+   */
+  commentPlaceholder?: string;
+
+  constructor(data?: PartialMessage<FeedbackRequestUpdate>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agent.v1.FeedbackRequestUpdate";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "request_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "canonical_model_name", kind: "scalar", T: 9 /* ScalarType.STRING */, opt: true },
+    { no: 5, name: "show_form_immediately", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 6, name: "title", kind: "scalar", T: 9 /* ScalarType.STRING */, opt: true },
+    { no: 7, name: "negative_title", kind: "scalar", T: 9 /* ScalarType.STRING */, opt: true },
+    { no: 8, name: "comment_placeholder", kind: "scalar", T: 9 /* ScalarType.STRING */, opt: true },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): FeedbackRequestUpdate {
+    return new FeedbackRequestUpdate().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): FeedbackRequestUpdate {
+    return new FeedbackRequestUpdate().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): FeedbackRequestUpdate {
+    return new FeedbackRequestUpdate().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: FeedbackRequestUpdate | PlainMessage<FeedbackRequestUpdate> | undefined, b: FeedbackRequestUpdate | PlainMessage<FeedbackRequestUpdate> | undefined): boolean {
+    return proto3.util.equals(FeedbackRequestUpdate, a, b);
+  }
+}
+
+/**
+ * @generated from message agent.v1.ResponseComparisonUpdate
+ */
+export class ResponseComparisonUpdate extends Message<ResponseComparisonUpdate> {
+  constructor(data?: PartialMessage<ResponseComparisonUpdate>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agent.v1.ResponseComparisonUpdate";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ResponseComparisonUpdate {
+    return new ResponseComparisonUpdate().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ResponseComparisonUpdate {
+    return new ResponseComparisonUpdate().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ResponseComparisonUpdate {
+    return new ResponseComparisonUpdate().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ResponseComparisonUpdate | PlainMessage<ResponseComparisonUpdate> | undefined, b: ResponseComparisonUpdate | PlainMessage<ResponseComparisonUpdate> | undefined): boolean {
+    return proto3.util.equals(ResponseComparisonUpdate, a, b);
+  }
+}
+
+/**
+ * @generated from message agent.v1.ContextInjectionQueued
+ */
+export class ContextInjectionQueued extends Message<ContextInjectionQueued> {
+  constructor(data?: PartialMessage<ContextInjectionQueued>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agent.v1.ContextInjectionQueued";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ContextInjectionQueued {
+    return new ContextInjectionQueued().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ContextInjectionQueued {
+    return new ContextInjectionQueued().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ContextInjectionQueued {
+    return new ContextInjectionQueued().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ContextInjectionQueued | PlainMessage<ContextInjectionQueued> | undefined, b: ContextInjectionQueued | PlainMessage<ContextInjectionQueued> | undefined): boolean {
+    return proto3.util.equals(ContextInjectionQueued, a, b);
+  }
+}
+
+/**
+ * @generated from message agent.v1.ContextInjectionDelivered
+ */
+export class ContextInjectionDelivered extends Message<ContextInjectionDelivered> {
+  constructor(data?: PartialMessage<ContextInjectionDelivered>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agent.v1.ContextInjectionDelivered";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ContextInjectionDelivered {
+    return new ContextInjectionDelivered().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ContextInjectionDelivered {
+    return new ContextInjectionDelivered().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ContextInjectionDelivered {
+    return new ContextInjectionDelivered().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ContextInjectionDelivered | PlainMessage<ContextInjectionDelivered> | undefined, b: ContextInjectionDelivered | PlainMessage<ContextInjectionDelivered> | undefined): boolean {
+    return proto3.util.equals(ContextInjectionDelivered, a, b);
+  }
+}
+
+/**
+ * @generated from message agent.v1.ContextInjectionQueuedForNextTurn
+ */
+export class ContextInjectionQueuedForNextTurn extends Message<ContextInjectionQueuedForNextTurn> {
+  constructor(data?: PartialMessage<ContextInjectionQueuedForNextTurn>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agent.v1.ContextInjectionQueuedForNextTurn";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ContextInjectionQueuedForNextTurn {
+    return new ContextInjectionQueuedForNextTurn().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ContextInjectionQueuedForNextTurn {
+    return new ContextInjectionQueuedForNextTurn().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ContextInjectionQueuedForNextTurn {
+    return new ContextInjectionQueuedForNextTurn().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ContextInjectionQueuedForNextTurn | PlainMessage<ContextInjectionQueuedForNextTurn> | undefined, b: ContextInjectionQueuedForNextTurn | PlainMessage<ContextInjectionQueuedForNextTurn> | undefined): boolean {
+    return proto3.util.equals(ContextInjectionQueuedForNextTurn, a, b);
+  }
+}
+
+/**
+ * @generated from message agent.v1.ContextInjectionCancelled
+ */
+export class ContextInjectionCancelled extends Message<ContextInjectionCancelled> {
+  constructor(data?: PartialMessage<ContextInjectionCancelled>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agent.v1.ContextInjectionCancelled";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ContextInjectionCancelled {
+    return new ContextInjectionCancelled().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ContextInjectionCancelled {
+    return new ContextInjectionCancelled().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ContextInjectionCancelled {
+    return new ContextInjectionCancelled().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ContextInjectionCancelled | PlainMessage<ContextInjectionCancelled> | undefined, b: ContextInjectionCancelled | PlainMessage<ContextInjectionCancelled> | undefined): boolean {
+    return proto3.util.equals(ContextInjectionCancelled, a, b);
+  }
+}
+
+/**
+ * @generated from message agent.v1.ContextInjectionRejected
+ */
+export class ContextInjectionRejected extends Message<ContextInjectionRejected> {
+  constructor(data?: PartialMessage<ContextInjectionRejected>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agent.v1.ContextInjectionRejected";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ContextInjectionRejected {
+    return new ContextInjectionRejected().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ContextInjectionRejected {
+    return new ContextInjectionRejected().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ContextInjectionRejected {
+    return new ContextInjectionRejected().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ContextInjectionRejected | PlainMessage<ContextInjectionRejected> | undefined, b: ContextInjectionRejected | PlainMessage<ContextInjectionRejected> | undefined): boolean {
+    return proto3.util.equals(ContextInjectionRejected, a, b);
+  }
+}
+
+/**
+ * @generated from message agent.v1.ContextInjectionState
+ */
+export class ContextInjectionState extends Message<ContextInjectionState> {
+  /**
+   * @generated from oneof agent.v1.ContextInjectionState.state
+   */
+  state: {
+    /**
+     * @generated from field: agent.v1.ContextInjectionQueued queued = 1;
+     */
+    value: ContextInjectionQueued;
+    case: "queued";
+  } | {
+    /**
+     * @generated from field: agent.v1.ContextInjectionDelivered delivered = 2;
+     */
+    value: ContextInjectionDelivered;
+    case: "delivered";
+  } | {
+    /**
+     * @generated from field: agent.v1.ContextInjectionQueuedForNextTurn queued_for_next_turn = 3;
+     */
+    value: ContextInjectionQueuedForNextTurn;
+    case: "queuedForNextTurn";
+  } | {
+    /**
+     * @generated from field: agent.v1.ContextInjectionCancelled cancelled = 4;
+     */
+    value: ContextInjectionCancelled;
+    case: "cancelled";
+  } | {
+    /**
+     * @generated from field: agent.v1.ContextInjectionRejected rejected = 5;
+     */
+    value: ContextInjectionRejected;
+    case: "rejected";
+  } | { case: undefined; value?: undefined } = { case: undefined };
+
+  constructor(data?: PartialMessage<ContextInjectionState>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agent.v1.ContextInjectionState";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "queued", kind: "message", T: ContextInjectionQueued, oneof: "state" },
+    { no: 2, name: "delivered", kind: "message", T: ContextInjectionDelivered, oneof: "state" },
+    { no: 3, name: "queued_for_next_turn", kind: "message", T: ContextInjectionQueuedForNextTurn, oneof: "state" },
+    { no: 4, name: "cancelled", kind: "message", T: ContextInjectionCancelled, oneof: "state" },
+    { no: 5, name: "rejected", kind: "message", T: ContextInjectionRejected, oneof: "state" },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ContextInjectionState {
+    return new ContextInjectionState().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ContextInjectionState {
+    return new ContextInjectionState().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ContextInjectionState {
+    return new ContextInjectionState().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ContextInjectionState | PlainMessage<ContextInjectionState> | undefined, b: ContextInjectionState | PlainMessage<ContextInjectionState> | undefined): boolean {
+    return proto3.util.equals(ContextInjectionState, a, b);
+  }
+}
+
+/**
+ * @generated from message agent.v1.ContextInjectionStateUpdate
+ */
+export class ContextInjectionStateUpdate extends Message<ContextInjectionStateUpdate> {
+  /**
+   * @generated from field: string injection_id = 1;
+   */
+  injectionId = "";
+
+  /**
+   * @generated from field: agent.v1.ContextInjectionState state = 2;
+   */
+  state?: ContextInjectionState;
+
+  constructor(data?: PartialMessage<ContextInjectionStateUpdate>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agent.v1.ContextInjectionStateUpdate";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "injection_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "state", kind: "message", T: ContextInjectionState },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ContextInjectionStateUpdate {
+    return new ContextInjectionStateUpdate().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ContextInjectionStateUpdate {
+    return new ContextInjectionStateUpdate().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ContextInjectionStateUpdate {
+    return new ContextInjectionStateUpdate().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ContextInjectionStateUpdate | PlainMessage<ContextInjectionStateUpdate> | undefined, b: ContextInjectionStateUpdate | PlainMessage<ContextInjectionStateUpdate> | undefined): boolean {
+    return proto3.util.equals(ContextInjectionStateUpdate, a, b);
+  }
+}
+
+/**
+ * @generated from message agent.v1.VoiceCallUtterance
+ */
+export class VoiceCallUtterance extends Message<VoiceCallUtterance> {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id = "";
+
+  /**
+   * @generated from field: agent.v1.VoiceCallUtteranceKind kind = 2;
+   */
+  kind = VoiceCallUtteranceKind.UNSPECIFIED;
+
+  /**
+   * @generated from field: string text = 3;
+   */
+  text = "";
+
+  /**
+   * @generated from field: repeated string answers_message_ids = 4;
+   */
+  answersMessageIds: string[] = [];
+
+  constructor(data?: PartialMessage<VoiceCallUtterance>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "agent.v1.VoiceCallUtterance";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "kind", kind: "enum", T: proto3.getEnumType(VoiceCallUtteranceKind) },
+    { no: 3, name: "text", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "answers_message_ids", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): VoiceCallUtterance {
+    return new VoiceCallUtterance().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): VoiceCallUtterance {
+    return new VoiceCallUtterance().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): VoiceCallUtterance {
+    return new VoiceCallUtterance().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: VoiceCallUtterance | PlainMessage<VoiceCallUtterance> | undefined, b: VoiceCallUtterance | PlainMessage<VoiceCallUtterance> | undefined): boolean {
+    return proto3.util.equals(VoiceCallUtterance, a, b);
+  }
+}
+
+/**
  * @generated from message agent.v1.InteractionUpdate
  */
 export class InteractionUpdate extends Message<InteractionUpdate> {
@@ -3595,7 +4369,72 @@ export class InteractionUpdate extends Message<InteractionUpdate> {
      */
     value: StepCompletedUpdate;
     case: "stepCompleted";
+  } | {
+    /**
+     * @generated from field: agent.v1.ToolRequestsListedUpdate tool_requests_listed = 27;
+     */
+    value: ToolRequestsListedUpdate;
+    case: "toolRequestsListed";
+  } | {
+    /**
+     * @generated from field: agent.v1.PostRequestPromptUpdate post_request_prompt = 19;
+     */
+    value: PostRequestPromptUpdate;
+    case: "postRequestPrompt";
+  } | {
+    /**
+     * @generated from field: agent.v1.ActiveBranchChangeUpdate active_branch_change = 20;
+     */
+    value: ActiveBranchChangeUpdate;
+    case: "activeBranchChange";
+  } | {
+    /**
+     * @generated from field: agent.v1.FeedbackRequestUpdate feedback_request = 21;
+     */
+    value: FeedbackRequestUpdate;
+    case: "feedbackRequest";
+  } | {
+    /**
+     * @generated from field: agent.v1.ResponseComparisonUpdate response_comparison = 22;
+     */
+    value: ResponseComparisonUpdate;
+    case: "responseComparison";
+  } | {
+    /**
+     * @generated from field: agent.v1.ContextInjectionStateUpdate context_injection_state = 23;
+     */
+    value: ContextInjectionStateUpdate;
+    case: "contextInjectionState";
+  } | {
+    /**
+     * @generated from field: agent.v1.RoutedModelUpdate routed_model = 24;
+     */
+    value: RoutedModelUpdate;
+    case: "routedModel";
+  } | {
+    /**
+     * @generated from field: agent.v1.GrokBotNudgeUpdate grok_bot_nudge = 26;
+     */
+    value: GrokBotNudgeUpdate;
+    case: "grokBotNudge";
+  } | {
+    /**
+     * @generated from field: agent.v1.ThinkingNoteUpdate thinking_note = 28;
+     */
+    value: ThinkingNoteUpdate;
+    case: "thinkingNote";
+  } | {
+    /**
+     * @generated from field: agent.v1.VoiceCallUtterance voice_call_utterance = 30;
+     */
+    value: VoiceCallUtterance;
+    case: "voiceCallUtterance";
   } | { case: undefined; value?: undefined } = { case: undefined };
+
+  /**
+   * @generated from field: optional int64 message_started_at_ms = 25;
+   */
+  messageStartedAtMs?: bigint;
 
   constructor(data?: PartialMessage<InteractionUpdate>) {
     super();
@@ -3622,6 +4461,17 @@ export class InteractionUpdate extends Message<InteractionUpdate> {
     { no: 14, name: "turn_ended", kind: "message", T: TurnEndedUpdate, oneof: "message" },
     { no: 16, name: "step_started", kind: "message", T: StepStartedUpdate, oneof: "message" },
     { no: 17, name: "step_completed", kind: "message", T: StepCompletedUpdate, oneof: "message" },
+    { no: 27, name: "tool_requests_listed", kind: "message", T: ToolRequestsListedUpdate, oneof: "message" },
+    { no: 19, name: "post_request_prompt", kind: "message", T: PostRequestPromptUpdate, oneof: "message" },
+    { no: 20, name: "active_branch_change", kind: "message", T: ActiveBranchChangeUpdate, oneof: "message" },
+    { no: 21, name: "feedback_request", kind: "message", T: FeedbackRequestUpdate, oneof: "message" },
+    { no: 22, name: "response_comparison", kind: "message", T: ResponseComparisonUpdate, oneof: "message" },
+    { no: 23, name: "context_injection_state", kind: "message", T: ContextInjectionStateUpdate, oneof: "message" },
+    { no: 24, name: "routed_model", kind: "message", T: RoutedModelUpdate, oneof: "message" },
+    { no: 26, name: "grok_bot_nudge", kind: "message", T: GrokBotNudgeUpdate, oneof: "message" },
+    { no: 28, name: "thinking_note", kind: "message", T: ThinkingNoteUpdate, oneof: "message" },
+    { no: 30, name: "voice_call_utterance", kind: "message", T: VoiceCallUtterance, oneof: "message" },
+    { no: 25, name: "message_started_at_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */, opt: true },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): InteractionUpdate {

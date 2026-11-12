@@ -18,6 +18,7 @@ import type { KvClientMessage } from "../../__generated__/agent/v1/kv_pb";
 import type { McpTools } from "../../__generated__/agent/v1/mcp_pb";
 import {
   ActivityTrackingStallDetector,
+  DEFAULT_STALL_THRESHOLD_MS,
   debugLogTransport,
   serializeErrorForDebug,
 } from "../../lib/transport-debug";
@@ -186,8 +187,6 @@ export class AgentConnectClient {
       conversationId:
         options.debugContext?.conversationId ?? runRequest.conversationId,
     };
-    const activityTracker = new ActivityTrackingStallDetector();
-
     debugLogTransport("run.start", {
       ...debugContext,
       modelId:
@@ -276,6 +275,19 @@ export class AgentConnectClient {
       sawTurnEnded.value = false;
       resumeEligibility.value = "eligible" as ResumeEligibility;
 
+      const stallAbort = new AbortController();
+      const stallState = { stalled: false };
+      const activityTracker = new ActivityTrackingStallDetector({
+        thresholdMs: DEFAULT_STALL_THRESHOLD_MS,
+        onStall: () => {
+          stallState.stalled = true;
+          stallAbort.abort(new Error("Connection stalled"));
+        },
+      });
+      const attemptSignal = options.signal
+        ? AbortSignal.any([options.signal, stallAbort.signal])
+        : stallAbort.signal;
+
       try {
         const request = this.buildRequest(
           currentState,
@@ -287,6 +299,7 @@ export class AgentConnectClient {
 
         await this.runInternal(request, {
           ...options,
+          signal: attemptSignal,
           interactionListener: trackingInteractionListener,
           checkpointHandler: trackingCheckpointHandler,
           activityTracker,
@@ -333,6 +346,9 @@ export class AgentConnectClient {
         currentAction = pending.action;
         attempt = 0;
       } catch (error) {
+        const effectiveError = stallState.stalled
+          ? new Error("Connection stalled", { cause: error })
+          : error;
         const pendingCount = this.pendingConversationActions.length;
 
         // Native: terminal checkpoint before a retryable error → complete
@@ -348,7 +364,7 @@ export class AgentConnectClient {
             attempt,
             sawTurnEnded: sawTurnEnded.value,
             resumeEligibility: resumeEligibility.value,
-            ...serializeErrorForDebug(error),
+            ...serializeErrorForDebug(effectiveError),
             activity: activityTracker.snapshot(),
           });
           return;
@@ -358,7 +374,7 @@ export class AgentConnectClient {
         // Premature close / missing EndStream. Retrying ResumeAction there
         // restarts the agent and stacks zombie "interrupted" turns.
         if (
-          isBenignStreamEndError(error) &&
+          isBenignStreamEndError(effectiveError) &&
           sawTurnEnded.value &&
           pendingCount === 0
         ) {
@@ -369,18 +385,18 @@ export class AgentConnectClient {
             attempt,
             sawTurnEnded: true,
             resumeEligibility: resumeEligibility.value,
-            ...serializeErrorForDebug(error),
+            ...serializeErrorForDebug(effectiveError),
             activity: activityTracker.snapshot(),
           });
           return;
         }
 
-        const retriable = isRetriableError(error);
+        const retriable = isRetriableError(effectiveError);
         const willRetry = retriable && attempt < MAX_RETRY_ATTEMPTS;
 
         debugLogTransport("transport.error", {
           ...debugContext,
-          ...serializeErrorForDebug(error),
+          ...serializeErrorForDebug(effectiveError),
           isRetriable: retriable,
           willRetry,
           sawTurnEnded: sawTurnEnded.value,
@@ -398,9 +414,9 @@ export class AgentConnectClient {
             durationMs: Date.now() - runStartedAt,
             attempt,
             sawTurnEnded: sawTurnEnded.value,
-            ...serializeErrorForDebug(error),
+            ...serializeErrorForDebug(effectiveError),
           });
-          throw error;
+          throw effectiveError;
         }
 
         // Retry: notify UI, maybe resume from checkpoint, backoff
@@ -423,6 +439,8 @@ export class AgentConnectClient {
         maybeResumeFromCheckpoint();
 
         await backoff(attempt, options.signal);
+      } finally {
+        activityTracker.dispose();
       }
     }
   }
