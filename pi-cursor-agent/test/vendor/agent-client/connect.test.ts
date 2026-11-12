@@ -317,6 +317,75 @@ test("treats Premature close after turn_ended as successful completion", async (
   assert.deepEqual(updates, ["turn-ended"]);
 });
 
+test("does not ResumeAction after turn_ended + terminal checkpoint + Premature close", async () => {
+  let attempt = 0;
+  const actionCases: string[] = [];
+
+  const client = new AgentConnectClient({
+    run(input) {
+      attempt += 1;
+      return (async function* () {
+        for await (const message of input) {
+          if (message.message.case !== "runRequest") continue;
+          const action = message.message.value.action;
+          actionCases.push(action?.action.case ?? "none");
+          yield turnEndedMessage();
+          yield new AgentServerMessage({
+            message: {
+              case: "conversationCheckpointUpdate",
+              value: new ConversationStateStructure({
+                rootPromptMessagesJson: [new Uint8Array([9])],
+              }),
+            },
+          });
+          throw new ConnectError("Premature close", Code.Unknown);
+        }
+      })();
+    },
+  });
+
+  await client.run(initialRequest(), createRunOptions());
+
+  assert.equal(attempt, 1);
+  assert.deepEqual(actionCases, ["userMessageAction"]);
+});
+
+test("still resumes from an eligible checkpoint on mid-turn Premature close", async () => {
+  let attempt = 0;
+  const actionCases: string[] = [];
+
+  const client = new AgentConnectClient({
+    run(input) {
+      attempt += 1;
+      return (async function* () {
+        for await (const message of input) {
+          if (message.message.case !== "runRequest") continue;
+          const action = message.message.value.action;
+          actionCases.push(action?.action.case ?? "none");
+          if (attempt === 1) {
+            yield new AgentServerMessage({
+              message: {
+                case: "conversationCheckpointUpdate",
+                value: new ConversationStateStructure({
+                  rootPromptMessagesJson: [new Uint8Array([3])],
+                }),
+              },
+            });
+            throw new ConnectError("Premature close", Code.Unknown);
+          }
+          yield turnEndedMessage();
+          return;
+        }
+      })();
+    },
+  });
+
+  await client.run(initialRequest(), createRunOptions());
+
+  assert.equal(attempt, 2);
+  assert.deepEqual(actionCases, ["userMessageAction", "resumeAction"]);
+});
+
 test("isRetriableTransportError matches native transport failures", () => {
   assert.equal(
     isRetriableTransportError(new Error("[unknown] Premature close")),

@@ -20,9 +20,12 @@ export {
   type InteractionListener,
 } from "./interaction-controller";
 export {
+  type CheckpointStreamItem,
   type ExecMessage,
   type InteractionMessage,
+  type ResumeEligibility,
   type SplitChannels,
+  type SplitStreamOptions,
   type StallDetector,
   splitStream,
 } from "./split-stream";

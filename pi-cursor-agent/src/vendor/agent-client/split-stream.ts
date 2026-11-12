@@ -10,6 +10,10 @@ import type {
   ExecServerMessage,
 } from "../../__generated__/agent/v1/exec_pb";
 import type { KvServerMessage } from "../../__generated__/agent/v1/kv_pb";
+import {
+  isBenignStreamEndError,
+  isRetriableTransportError,
+} from "./transport-errors";
 
 export type InteractionMessage =
   | { case: "interactionUpdate"; value: InteractionUpdate }
@@ -17,16 +21,32 @@ export type InteractionMessage =
 
 export type ExecMessage = ExecServerMessage | ExecServerControlMessage;
 
+/** Mirrors native cursor-agent checkpoint resume gating after turn_ended. */
+export type ResumeEligibility = "eligible" | "ineligible_terminal_turn";
+
+export type CheckpointStreamItem = {
+  checkpoint: ConversationStateStructure;
+  metadata: { resumeEligibility: ResumeEligibility };
+};
+
 export interface StallDetector {
   onServerSentHeartbeat(): void;
   reset(activityType: string, messageType: string): void;
   onStreamEnded(): void;
 }
 
+export interface SplitStreamOptions {
+  onFirstMessage?: () => void;
+  /** Fired synchronously when turn_ended is demuxed from the wire. */
+  onTurnEnded?: () => void;
+  signal?: AbortSignal;
+  parentSignal?: AbortSignal;
+}
+
 export interface SplitChannels {
   interactionStream: AsyncIterable<InteractionMessage>;
   execStream: AsyncIterable<ExecMessage>;
-  checkpointStream: AsyncIterable<ConversationStateStructure>;
+  checkpointStream: AsyncIterable<CheckpointStreamItem>;
   kvStream: AsyncIterable<KvServerMessage>;
   done: Promise<void>;
 }
@@ -61,25 +81,47 @@ function getMessageTypeLabelForStallDetector(
   return parts.filter((p) => p !== undefined).join(":");
 }
 
+function isIgnorableTerminalTransportClose(error: unknown): boolean {
+  return (
+    isBenignStreamEndError(error) || isRetriableTransportError(error)
+  );
+}
+
+/**
+ * Demux the agent bidi stream.
+ *
+ * Native cursor-agent marks turn_ended here (not in the interaction listener),
+ * tags post-turn checkpoints as ineligible for resume, and swallows the common
+ * Premature-close teardown that follows a terminal turn.
+ */
 export function splitStream(
   stream: AsyncIterable<AgentServerMessage>,
   detector: StallDetector,
-  onFirstMessage?: () => void,
+  onFirstMessageOrOptions?: (() => void) | SplitStreamOptions,
 ): SplitChannels {
+  const options: SplitStreamOptions =
+    typeof onFirstMessageOrOptions === "function"
+      ? { onFirstMessage: onFirstMessageOrOptions }
+      : (onFirstMessageOrOptions ?? {});
+
   const interactionStream = createWritableIterable<InteractionMessage>();
   const execStream = createWritableIterable<ExecMessage>();
-  const checkpointStream = createWritableIterable<ConversationStateStructure>();
+  const checkpointStream = createWritableIterable<CheckpointStreamItem>();
   const kvStream = createWritableIterable<KvServerMessage>();
 
   let firstMessageFired = false;
 
   async function run() {
+    let caughtError: unknown;
+    let sawTurnEnded = false;
+    let sawIneligibleCheckpoint = false;
+
     try {
       for await (const message of stream) {
         // Notify on first message (indicates connection is working)
         if (!firstMessageFired) {
           firstMessageFired = true;
-          onFirstMessage?.();
+          options.onFirstMessage?.();
         }
 
         if (
@@ -95,6 +137,14 @@ export function splitStream(
             "inbound_message",
             getMessageTypeLabelForStallDetector(message),
           );
+        }
+
+        if (
+          message.message.case === "interactionUpdate" &&
+          message.message.value.message.case === "turnEnded"
+        ) {
+          sawTurnEnded = true;
+          options.onTurnEnded?.();
         }
 
         if (
@@ -116,7 +166,16 @@ export function splitStream(
         }
 
         if (message.message.case === "conversationCheckpointUpdate") {
-          await checkpointStream.write(message.message.value);
+          const resumeEligibility: ResumeEligibility = sawTurnEnded
+            ? "ineligible_terminal_turn"
+            : "eligible";
+          if (resumeEligibility === "ineligible_terminal_turn") {
+            sawIneligibleCheckpoint = true;
+          }
+          await checkpointStream.write({
+            checkpoint: message.message.value,
+            metadata: { resumeEligibility },
+          });
         }
 
         if (message.message.case === "kvServerMessage") {
@@ -125,11 +184,34 @@ export function splitStream(
       }
 
       detector.onStreamEnded();
+    } catch (error) {
+      caughtError = error;
     } finally {
+      let errorToThrow = caughtError;
+      const aborted =
+        options.signal?.aborted === true ||
+        options.parentSignal?.aborted === true;
+
+      // Native: ignore Premature close after turn_ended + terminal checkpoint.
+      if (
+        sawTurnEnded &&
+        sawIneligibleCheckpoint &&
+        errorToThrow !== undefined &&
+        !aborted &&
+        isIgnorableTerminalTransportClose(errorToThrow)
+      ) {
+        detector.onStreamEnded();
+        errorToThrow = undefined;
+      }
+
       interactionStream.close();
       execStream.close();
       checkpointStream.close();
       kvStream.close();
+
+      if (errorToThrow !== undefined) {
+        throw errorToThrow;
+      }
     }
   }
 

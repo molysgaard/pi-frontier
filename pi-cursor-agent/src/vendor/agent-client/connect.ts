@@ -29,12 +29,25 @@ import {
   CheckpointController,
   type CheckpointHandler,
 } from "./checkpoint-controller";
-import { ClientExecController, LostConnection } from "./exec-controller";
+import { ClientExecController } from "./exec-controller";
 import {
   ClientInteractionController,
   type InteractionListener,
 } from "./interaction-controller";
-import { type SplitChannels, splitStream } from "./split-stream";
+import {
+  type ResumeEligibility,
+  type SplitChannels,
+  splitStream,
+} from "./split-stream";
+import {
+  isBenignStreamEndError,
+  isRetriableTransportError,
+} from "./transport-errors";
+
+export {
+  isBenignStreamEndError,
+  isRetriableTransportError,
+} from "./transport-errors";
 
 export interface AgentRpcClient {
   run(
@@ -66,88 +79,8 @@ export interface AgentConnectRunOptions {
 const HEARTBEAT_INTERVAL_MS = 5_000;
 const MAX_RETRY_ATTEMPTS = 5;
 
-/**
- * Transport failure substrings treated as retriable by native cursor-agent.
- * Matched against error.message and nested cause messages.
- */
-const RETRIABLE_TRANSPORT_SUBSTRINGS = [
-  "NGHTTP2",
-  "ECONNRESET",
-  "ECONNREFUSED",
-  "ETIMEDOUT",
-  "EPIPE",
-  "socket hang up",
-  "Premature close",
-  "UND_ERR_SOCKET",
-  "ERR_STREAM",
-  "protocol error",
-  "http/2 stream",
-  "ERR_HTTP2_SESSION_ERROR",
-  "Session closed with error code",
-  "connection aborted",
-  "PING timed out",
-] as const;
-
-function collectErrorTexts(error: unknown): string[] {
-  const texts: string[] = [];
-  let current: unknown = error;
-  const seen = new Set<unknown>();
-
-  while (current && !seen.has(current) && texts.length < 8) {
-    seen.add(current);
-    if (current instanceof Error) {
-      texts.push(current.message);
-      const withCode = current as Error & {
-        code?: unknown;
-        rawMessage?: unknown;
-      };
-      if (typeof withCode.code === "string") texts.push(withCode.code);
-      if (typeof withCode.rawMessage === "string") {
-        texts.push(withCode.rawMessage);
-      }
-      current = (current as Error & { cause?: unknown }).cause;
-      continue;
-    }
-    texts.push(String(current));
-    break;
-  }
-
-  return texts;
-}
-
-/** Exported for unit tests — mirrors native cursor-agent transport retry policy. */
-export function isRetriableTransportError(error: unknown): boolean {
-  if (error instanceof LostConnection) return true;
-
-  const texts = collectErrorTexts(error);
-  return RETRIABLE_TRANSPORT_SUBSTRINGS.some((needle) =>
-    texts.some((text) => text.includes(needle)),
-  );
-}
-
 function isRetriableError(error: unknown): boolean {
   return isRetriableTransportError(error);
-}
-
-/**
- * Stream-close failures that often mean "peer finished the bidi stream"
- * rather than a mid-turn drop. Matched against message/cause text.
- */
-const BENIGN_STREAM_END_SUBSTRINGS = [
-  "Premature close",
-  "ERR_STREAM_PREMATURE_CLOSE",
-  "missing EndStreamResponse",
-  "WriteIterableClosed",
-] as const;
-
-export function isBenignStreamEndError(error: unknown): boolean {
-  if (error instanceof LostConnection) {
-    return isBenignStreamEndError(new Error(error.message));
-  }
-  const texts = collectErrorTexts(error);
-  return BENIGN_STREAM_END_SUBSTRINGS.some((needle) =>
-    texts.some((text) => text.includes(needle)),
-  );
 }
 
 async function backoff(attempt: number, signal?: AbortSignal): Promise<void> {
@@ -277,11 +210,16 @@ export class AgentConnectClient {
     let unacknowledgedClosureAttempts = 0;
     const receivedNewCheckpoint = { value: false };
     const sawTurnEnded = { value: false };
+    // Boxed so async checkpoint updates do not get narrowed away by CFA.
+    const resumeEligibility = {
+      value: "eligible" as ResumeEligibility,
+    };
     const runStartedAt = Date.now();
 
-    // Helper: switch to ResumeAction if we received a checkpoint
+    // Helper: switch to ResumeAction if we received an eligible checkpoint
     const maybeResumeFromCheckpoint = () => {
       if (!receivedNewCheckpoint.value) return;
+      if (resumeEligibility.value === "ineligible_terminal_turn") return;
       const checkpoint = options.checkpointHandler.getLatestCheckpoint?.();
       if (!checkpoint) return;
       currentState = checkpoint;
@@ -312,9 +250,16 @@ export class AgentConnectClient {
       async handleCheckpoint(
         ctx: unknown,
         checkpoint: ConversationStateStructure,
+        metadata,
       ): Promise<void> {
         receivedNewCheckpoint.value = true;
-        return options.checkpointHandler.handleCheckpoint(ctx, checkpoint);
+        resumeEligibility.value =
+          metadata?.resumeEligibility ?? "eligible";
+        return options.checkpointHandler.handleCheckpoint(
+          ctx,
+          checkpoint,
+          metadata,
+        );
       },
       getLatestCheckpoint: () =>
         options.checkpointHandler.getLatestCheckpoint?.(),
@@ -326,8 +271,10 @@ export class AgentConnectClient {
         throw new Error("Request cancelled");
       }
 
-      // Reset per-attempt flags
+      // Reset per-attempt flags (native demux state is per attempt)
       receivedNewCheckpoint.value = false;
+      sawTurnEnded.value = false;
+      resumeEligibility.value = "eligible" as ResumeEligibility;
 
       try {
         const request = this.buildRequest(
@@ -343,6 +290,10 @@ export class AgentConnectClient {
           interactionListener: trackingInteractionListener,
           checkpointHandler: trackingCheckpointHandler,
           activityTracker,
+          onTurnEnded: () => {
+            sawTurnEnded.value = true;
+          },
+          getResumeEligibility: () => resumeEligibility.value,
         });
 
         const pending = this.pendingConversationActions[0];
@@ -383,6 +334,26 @@ export class AgentConnectClient {
         attempt = 0;
       } catch (error) {
         const pendingCount = this.pendingConversationActions.length;
+
+        // Native: terminal checkpoint before a retryable error → complete
+        // without automatic ResumeAction (avoids zombie interrupted turns).
+        if (
+          resumeEligibility.value === "ineligible_terminal_turn" &&
+          pendingCount === 0
+        ) {
+          debugLogTransport("run.end", {
+            ...debugContext,
+            reason: "completed_after_terminal_checkpoint",
+            durationMs: Date.now() - runStartedAt,
+            attempt,
+            sawTurnEnded: sawTurnEnded.value,
+            resumeEligibility: resumeEligibility.value,
+            ...serializeErrorForDebug(error),
+            activity: activityTracker.snapshot(),
+          });
+          return;
+        }
+
         // After Cursor sends turn_ended, the HTTP/2 stream often closes with
         // Premature close / missing EndStream. Retrying ResumeAction there
         // restarts the agent and stacks zombie "interrupted" turns.
@@ -397,6 +368,7 @@ export class AgentConnectClient {
             durationMs: Date.now() - runStartedAt,
             attempt,
             sawTurnEnded: true,
+            resumeEligibility: resumeEligibility.value,
             ...serializeErrorForDebug(error),
             activity: activityTracker.snapshot(),
           });
@@ -412,6 +384,7 @@ export class AgentConnectClient {
           isRetriable: retriable,
           willRetry,
           sawTurnEnded: sawTurnEnded.value,
+          resumeEligibility: resumeEligibility.value,
           pendingCount,
           attempt,
           maxAttempts: MAX_RETRY_ATTEMPTS,
@@ -433,13 +406,17 @@ export class AgentConnectClient {
         // Retry: notify UI, maybe resume from checkpoint, backoff
         attempt++;
         const delayMs = Math.min(1_000 * 2 ** attempt, 30_000);
+        const willResume =
+          receivedNewCheckpoint.value &&
+          resumeEligibility.value !== "ineligible_terminal_turn";
         debugLogTransport("transport.retry", {
           ...debugContext,
           attempt,
           maxAttempts: MAX_RETRY_ATTEMPTS,
           backoffMs: delayMs,
-          resumeFromCheckpoint: receivedNewCheckpoint.value,
+          resumeFromCheckpoint: willResume,
           sawTurnEnded: sawTurnEnded.value,
+          resumeEligibility: resumeEligibility.value,
           activity: activityTracker.snapshot(),
         });
         options.onConnectionStateChange?.({ state: "reconnecting" });
@@ -479,6 +456,8 @@ export class AgentConnectClient {
     initialRequest: AgentClientMessage,
     options: AgentConnectRunOptions & {
       activityTracker: ActivityTrackingStallDetector;
+      onTurnEnded?: () => void;
+      getResumeEligibility?: () => ResumeEligibility;
     },
   ): Promise<void> {
     const controlledExecManager = SimpleControlledExecManager.fromResources(
@@ -518,8 +497,20 @@ export class AgentConnectClient {
       void conversationActionWriter(pending.action).catch(() => {});
     }
 
-    const channels: SplitChannels = splitStream(response, stallDetector, () =>
-      options.onConnectionStateChange?.({ state: "connected" }),
+    const splitOptions: import("./split-stream").SplitStreamOptions = {
+      onFirstMessage: () =>
+        options.onConnectionStateChange?.({ state: "connected" }),
+    };
+    if (options.onTurnEnded) {
+      splitOptions.onTurnEnded = options.onTurnEnded;
+    }
+    if (options.signal) {
+      splitOptions.signal = options.signal;
+    }
+    const channels: SplitChannels = splitStream(
+      response,
+      stallDetector,
+      splitOptions,
     );
 
     // Heartbeat sender using setTimeout (not setInterval)
@@ -627,10 +618,33 @@ export class AgentConnectClient {
         kvManager.run(ctx),
       ]);
 
-      for (const result of results) {
-        if (result.status === "rejected") {
-          throw result.reason;
-        }
+      const [
+        streamResult,
+        execResult,
+        interactionResult,
+        checkpointResult,
+        kvResult,
+      ] = results;
+
+      if (checkpointResult?.status === "rejected") {
+        throw checkpointResult.reason;
+      }
+
+      // Native: after an ineligible terminal checkpoint, ignore demux/exec
+      // Premature-close teardown noise instead of surfacing it for resume.
+      const terminal =
+        options.getResumeEligibility?.() === "ineligible_terminal_turn";
+      if (!terminal && streamResult?.status === "rejected") {
+        throw streamResult.reason;
+      }
+      if (!terminal && execResult?.status === "rejected") {
+        throw execResult.reason;
+      }
+      if (interactionResult?.status === "rejected") {
+        throw interactionResult.reason;
+      }
+      if (kvResult?.status === "rejected") {
+        throw kvResult.reason;
       }
     } finally {
       clearHeartbeat();
