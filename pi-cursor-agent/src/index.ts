@@ -23,6 +23,7 @@ import {
   setCoveredEntryId,
 } from "./provider/agent-store";
 import { getLiveSession } from "./provider/agent-stream-hook";
+import { shouldCancelCompactionForModel } from "./provider/compaction-policy";
 import {
   getCachedPiModels,
   updateCachedPiModelsIfStale,
@@ -177,6 +178,15 @@ export default (pi: ExtensionAPI) => {
 
   pi.on("session_tree", async (_, ctx) => {
     await refreshBranchState(ctx);
+  });
+
+
+  pi.on("session_before_compact", async (_event, ctx) => {
+    lastCtx = ctx;
+    if (shouldCancelCompactionForModel(ctx.model)) {
+      return { cancel: true };
+    }
+    return {};
   });
 
   pi.on("tool_execution_end", async (event) => {
