@@ -16,7 +16,13 @@ import {
   CURSOR_CLIENT_VERSION,
   CURSOR_WEBSITE_URL,
 } from "./lib/env";
-import { restoreAgentStoreFromBranch } from "./provider/agent-store";
+import {
+  CURSOR_STATE_ENTRY_TYPE,
+  persistAgentStore,
+  restoreAgentStoreFromBranch,
+  setCoveredEntryId,
+} from "./provider/agent-store";
+import { getLiveSession } from "./provider/agent-stream-hook";
 import {
   getCachedPiModels,
   updateCachedPiModelsIfStale,
@@ -92,6 +98,9 @@ export default (pi: ExtensionAPI) => {
     lastCtx = ctx;
     const sessionId = ctx.sessionManager.getSessionId();
     await cleanupPreviousSession(sessionId);
+    // Always drop live Cursor RPC when the branch/session binding changes
+    // (including /tree within the same session id).
+    await terminateSession(sessionId, "Session branch changed");
     state.resetFromContext(ctx);
     try {
       await restoreAgentStoreFromBranch(
@@ -102,6 +111,37 @@ export default (pi: ExtensionAPI) => {
     retainOnlyActiveSessionMemory(sessionId);
   };
 
+  const flushCoveredEntryAnchor = async (ctx: ExtensionContext) => {
+    if (ctx.model?.provider !== "cursor-agent") return;
+    const sessionId = ctx.sessionManager.getSessionId();
+    const leaf = ctx.sessionManager.getLeafEntry();
+    if (!leaf || leaf.type !== "message") return;
+
+    const live = getLiveSession(sessionId);
+    if (live) {
+      setCoveredEntryId(sessionId, leaf.id);
+      try {
+        await live.flushSessionState();
+        return;
+      } catch {}
+    }
+
+    // Stream path often evicts the in-memory store before turn_end. Restore
+    // from the branch first, then write a snapshot that includes coveredEntryId
+    // pointing at the just-finished message leaf.
+    try {
+      await restoreAgentStoreFromBranch(
+        sessionId,
+        ctx.sessionManager.getBranch(),
+      );
+      setCoveredEntryId(sessionId, leaf.id);
+      const snapshot = await persistAgentStore(sessionId);
+      if (snapshot) {
+        pi.appendEntry(CURSOR_STATE_ENTRY_TYPE, snapshot);
+      }
+    } catch {}
+  };
+
   pi.on("before_agent_start", async (_, ctx) => {
     lastCtx = ctx;
   });
@@ -110,10 +150,18 @@ export default (pi: ExtensionAPI) => {
     lastCtx = ctx;
   });
 
+  pi.on("turn_end", async (_, ctx) => {
+    lastCtx = ctx;
+    await flushCoveredEntryAnchor(ctx);
+  });
+
   pi.on("model_select", async (event, ctx) => {
     lastCtx = ctx;
+    const sessionId = ctx.sessionManager.getSessionId();
     if (event.model.provider === "cursor-agent") {
       updateCachedModelsFromContextInBackground(ctx);
+    } else {
+      await terminateSession(sessionId, "Switched away from Cursor Agent");
     }
   });
 

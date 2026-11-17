@@ -1,6 +1,12 @@
 import type { SessionEntry } from "@mariozechner/pi-coding-agent";
 import { ConversationStateStructure } from "../__generated__/agent/v1/agent_pb";
 import {
+  type AgentStoreSnapshot,
+  CURSOR_STATE_ENTRY_TYPE,
+  findLatestStateSnapshot,
+  isAgentStoreSnapshot,
+} from "../bridge/pi-to-cursor/checkpoint-sync";
+import {
   applySnapshotToStore,
   deleteAgentStore as deleteStore,
   ensureAgentStore as ensureStore,
@@ -9,47 +15,47 @@ import {
 import { type AgentStore, fromHex, toHex } from "../vendor/agent-kv";
 import { PI_CURSOR_AGENT_CACHE_DIR } from "./env";
 
-export const CURSOR_STATE_ENTRY_TYPE = "pi-cursor-agent:state";
+export { CURSOR_STATE_ENTRY_TYPE };
+export type { AgentStoreSnapshot };
 
-interface AgentStoreSnapshot {
-  version: 1;
-  agentId: string;
-  latestRootBlobId: string;
-  conversationState?: string;
-}
+/** Per-session covered Pi entry id (mirrored into state snapshots on flush). */
+const coveredEntryIds = new Map<string, string>();
 
-const isAgentStoreSnapshot = (value: unknown): value is AgentStoreSnapshot => {
-  if (typeof value !== "object" || value === null) {
-    return false;
+export const getCoveredEntryId = (sessionId: string): string | undefined =>
+  coveredEntryIds.get(sessionId);
+
+export const setCoveredEntryId = (
+  sessionId: string,
+  entryId: string | undefined,
+): void => {
+  if (!entryId) {
+    coveredEntryIds.delete(sessionId);
+    return;
   }
-
-  const snapshot = value as Partial<AgentStoreSnapshot>;
-  return (
-    snapshot.version === 1 &&
-    typeof snapshot.agentId === "string" &&
-    typeof snapshot.latestRootBlobId === "string"
-  );
+  coveredEntryIds.set(sessionId, entryId);
 };
 
-const findSnapshot = (entries: SessionEntry[]): AgentStoreSnapshot | null => {
-  for (let i = entries.length - 1; i >= 0; i--) {
-    const e = entries[i];
-    if (!e || e.type !== "custom" || e.customType !== CURSOR_STATE_ENTRY_TYPE) {
-      continue;
-    }
-
-    if (isAgentStoreSnapshot(e.data)) {
-      return e.data;
-    }
-  }
-  return null;
+export const clearCoveredEntryId = (sessionId: string): void => {
+  coveredEntryIds.delete(sessionId);
 };
+
+export const findSnapshot = (
+  entries: SessionEntry[],
+): AgentStoreSnapshot | null =>
+  findLatestStateSnapshot(entries)?.snapshot ?? null;
 
 export const ensureAgentStore = async (
   sessionId: string,
 ): Promise<AgentStore> => {
   const entry = await ensureStore(PI_CURSOR_AGENT_CACHE_DIR, sessionId);
   return entry.store;
+};
+
+export const mintAgentId = async (sessionId: string): Promise<string> => {
+  const entry = await ensureStore(PI_CURSOR_AGENT_CACHE_DIR, sessionId);
+  const agentId = crypto.randomUUID();
+  entry.jsonStore.metadata.agentId = agentId;
+  return agentId;
 };
 
 export const persistAgentStore = async (
@@ -69,6 +75,11 @@ export const persistAgentStore = async (
     agentId: metadata.agentId,
     latestRootBlobId: toHex(metadata.latestRootBlobId),
   };
+
+  const coveredEntryId = coveredEntryIds.get(sessionId);
+  if (coveredEntryId) {
+    snapshot.coveredEntryId = coveredEntryId;
+  }
 
   try {
     const bytes = store.getConversationStateStructure().toBinary();
@@ -90,6 +101,8 @@ export const evictAgentStore = async (
     }
   } finally {
     deleteStore(sessionId);
+    // Keep coveredEntryId across short-lived evict/restore within the same
+    // session; clear only when retain/explicit clear is used elsewhere.
   }
 };
 
@@ -99,7 +112,14 @@ export const restoreAgentStoreFromBranch = async (
 ): Promise<void> => {
   const snapshot = findSnapshot(entries);
   if (!snapshot) {
+    clearCoveredEntryId(sessionId);
     return;
+  }
+
+  if (snapshot.coveredEntryId) {
+    setCoveredEntryId(sessionId, snapshot.coveredEntryId);
+  } else {
+    clearCoveredEntryId(sessionId);
   }
 
   const storeEntry = await ensureStore(PI_CURSOR_AGENT_CACHE_DIR, sessionId);
@@ -120,5 +140,10 @@ export const restoreAgentStoreFromBranch = async (
           Buffer.from(snapshot.conversationState, "base64"),
         );
     } catch {}
+  } else {
+    storeEntry.jsonStore.metadata.agentId = snapshot.agentId;
   }
 };
+
+/** @internal test helper */
+export const _isAgentStoreSnapshotForTest = isAgentStoreSnapshot;

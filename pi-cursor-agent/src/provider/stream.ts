@@ -30,6 +30,10 @@ import {
 } from "../bridge/cursor-to-pi/tool-bridge";
 import { preparePiContext } from "../bridge/pi-context";
 import {
+  contextWithStuffedUserMessage,
+  planCheckpointContinuity,
+} from "../bridge/pi-to-cursor/checkpoint-sync";
+import {
   buildContinuationActions,
   buildRunRequest,
   getContextTools,
@@ -55,6 +59,7 @@ import {
   CURSOR_STATE_ENTRY_TYPE,
   ensureAgentStore,
   evictAgentStore,
+  mintAgentId,
   persistAgentStore,
 } from "./agent-store";
 import {
@@ -440,7 +445,18 @@ export function streamCursorAgent(
 
         const agentStore = await ensureAgentStore(sessionId);
         const cwd = getCtx()?.cwd ?? process.cwd();
-        const requestContextTools = getContextTools(context);
+        const extCtx = getCtx();
+        const branch = extCtx?.sessionManager.getBranch() ?? [];
+        const continuity = planCheckpointContinuity({ branch, context });
+        let runContext = context;
+        if (continuity.stale) {
+          await mintAgentId(sessionId);
+          runContext = contextWithStuffedUserMessage(
+            context,
+            continuity.stuffPrefix,
+          );
+        }
+        const requestContextTools = getContextTools(runContext);
 
         const channel = new LiveEventChannel(sessionId);
         const sessionAbortController = new AbortController();
@@ -460,7 +476,7 @@ export function streamCursorAgent(
           getChannel: () => channel,
         };
 
-        const systemPrompt = resolveContextSystemPrompt(context);
+        const systemPrompt = resolveContextSystemPrompt(runContext);
         const piContext = await preparePiContext(systemPrompt);
 
         const resources = new LocalResourceProvider({
@@ -472,12 +488,17 @@ export function streamCursorAgent(
         const blobStore = agentStore.getBlobStore();
         const cursorModelId = toCursorId(model.id, options?.reasoning);
         const overlayState = createOverlayState(state);
+        // Prefer native checkpoint from the agent store when present. Do not
+        // rely on client-built turns for model-visible foreign history.
+        const nativeCheckpoint = agentStore.getConversationStateStructure();
+        const hasNativeCheckpoint =
+          nativeCheckpoint.rootPromptMessagesJson.length > 0;
         const { initialRequest, conversationState } = buildRunRequest({
           model: { ...model, id: cursorModelId },
-          context,
+          context: runContext,
           conversationId: agentStore.getId(),
           blobStore,
-          conversationState: agentStore.getConversationStateStructure(),
+          conversationState: hasNativeCheckpoint ? nativeCheckpoint : undefined,
           mcpToolDefinitions: requestContextTools,
           state: overlayState,
           systemPromptOverride: piContext.cleanedPrompt,
@@ -485,11 +506,18 @@ export function streamCursorAgent(
         agentStore.conversationStateStructure = conversationState;
 
         let lastFlushedRootBlobId: string | undefined;
+        let lastFlushedCoveredEntryId: string | undefined;
         const flushSessionState = async () => {
           const snapshot = await persistAgentStore(sessionId);
-          if (!snapshot || snapshot.latestRootBlobId === lastFlushedRootBlobId)
+          if (!snapshot) return;
+          if (
+            snapshot.latestRootBlobId === lastFlushedRootBlobId &&
+            snapshot.coveredEntryId === lastFlushedCoveredEntryId
+          ) {
             return;
+          }
           lastFlushedRootBlobId = snapshot.latestRootBlobId;
+          lastFlushedCoveredEntryId = snapshot.coveredEntryId;
           pi.appendEntry(CURSOR_STATE_ENTRY_TYPE, snapshot);
         };
 
